@@ -1,5 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cu118
 torch==2.2.1+cu118
+tensorboard
 ultralytics
 numpy
 pandas
