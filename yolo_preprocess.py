@@ -1,12 +1,13 @@
 import json
 import os
+from PIL import Image
 
 import tqdm
 
 
 def preprocess_yolo_labels():
 
-    output_dir = "data/labels"
+    output_dir = "D:/Documents/Programs/ECE379K/datasets/deepfashion_yolo_format/labels"
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -18,6 +19,7 @@ def preprocess_yolo_labels():
         os.makedirs(train_output_dir)
 
     train_source_dir = "data/train/annos"
+    train_image_source_dir = "D:/Documents/Programs/ECE379K/datasets/deepfashion_yolo_format/images/train"
 
     # loop through each json file in the source directory
     for file in tqdm.tqdm(os.listdir(train_source_dir)):
@@ -32,10 +34,29 @@ def preprocess_yolo_labels():
                             continue
                         label = data[obj].get("category_id") - 1
                         x1, y1, x2, y2 = data[obj].get("bounding_box")
+                        # convert to x_center, y_center, width, height
                         x_center = (x1 + x2) / 2
                         y_center = (y1 + y2) / 2
                         w = x2 - x1
                         h = y2 - y1
+
+                        # get total image height and width from image
+                        # file_path = os.path.join(train_source_dir, file)
+                        # image_file = file_path.replace(".json", ".jpg")
+                        # image_file = image_file.replace("annos", "image")
+                        # print(image_file)
+                        # image_file = image_file.replace("\\", "/")
+                        # print(image_file)
+
+                        image = Image.open(os.path.join(train_image_source_dir, file.replace(".json", ".jpg")))
+                        width, height = image.size
+
+                        # normalize values
+                        x_center /= width
+                        y_center /= height
+                        w /= width
+                        h /= height
+
                         out_file.write(f"{label} {x_center} {y_center} {w} {h}\n")
 
     # for validation data
@@ -45,6 +66,8 @@ def preprocess_yolo_labels():
         os.makedirs(val_output_dir)
 
     val_source_dir = "data/validation/annos"
+    val_image_source_dir = "D:/Documents/Programs/ECE379K/datasets/deepfashion_yolo_format/images/val"
+
 
     # loop through each json file in the source directory
 
@@ -64,6 +87,21 @@ def preprocess_yolo_labels():
                         y_center = (y1 + y2) / 2
                         w = x2 - x1
                         h = y2 - y1
+
+                        # file_path = os.path.join(val_source_dir, file)
+                        # image_file = file_path.replace(".json", ".jpg")
+                        # image_file = image_file.replace("annos", "image")
+                        # image_file = image_file.replace("\\", "/")
+
+                        image = Image.open(os.path.join(val_image_source_dir, file.replace(".json", ".jpg")))
+                        width, height = image.size
+
+                        # normalize values
+                        x_center /= width
+                        y_center /= height
+                        w /= width
+                        h /= height
+
                         out_file.write(f"{label} {x_center} {y_center} {w} {h}\n")
 
 
@@ -94,4 +132,4 @@ def get_classes():
             f.write(f"{key}: {value}\n")
 
 
-get_classes()
+preprocess_yolo_labels()
