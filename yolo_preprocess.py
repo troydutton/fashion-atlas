@@ -1,140 +1,97 @@
 import json
 import os
 
-import tqdm
 from PIL import Image
+from tqdm import tqdm
 
 
-def preprocess_yolo_labels():
+def preprocess_labels(meta_dir: str, image_dir: str, output_dir: str):
+    # Verify the output directory exists
+    os.makedirs(output_dir, exist_ok=True)
 
-    output_dir = (
-        "C:/Users/troyd/Programs/ECE379K/datasets/deepfashion_yolo_format/labels"
-    )
+    # Initialize a dictionary to store the label names
+    labels = {}
 
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    # Preprocess each json file in the source directory
+    for input_file_name in tqdm(
+        os.listdir(meta_dir), desc="Processing Labels", unit="file"
+    ):
+        # Skip non-json files
+        if not input_file_name.endswith(".json"):
+            continue
 
-    # for training data
+        raw_file_name = input_file_name.replace(".json", "")
 
-    train_output_dir = os.path.join(output_dir, "train")
-    if not os.path.exists(train_output_dir):
-        os.makedirs(train_output_dir)
+        input_file_path = os.path.join(meta_dir, input_file_name)
 
-    train_source_dir = "data/DeepFashion/train/annos"
-    train_image_source_dir = (
-        "C:/Users/troyd/Programs/ECE379K/datasets/deepfashion_yolo_format/images/train"
-    )
+        # Open the input file
+        with open(input_file_path) as input_file:
+            data = json.load(input_file)
 
-    # loop through each json file in the source directory
-    for file in tqdm.tqdm(os.listdir(train_source_dir)):
+            output_file_path = os.path.join(output_dir, raw_file_name) + ".txt"
 
-        if file.endswith(".json"):
-            with open(os.path.join(train_source_dir, file)) as f:
-                data = json.load(f)
-                label_file = file.replace(".json", ".txt")
-                with open(os.path.join(train_output_dir, label_file), "w") as out_file:
-                    for obj in data:
-                        if type(data[obj]) is not dict:
-                            continue
-                        label = data[obj].get("category_id") - 1
-                        x1, y1, x2, y2 = data[obj].get("bounding_box")
-                        # convert to x_center, y_center, width, height
-                        x_center = (x1 + x2) / 2
-                        y_center = (y1 + y2) / 2
-                        w = x2 - x1
-                        h = y2 - y1
-
-                        image = Image.open(
-                            os.path.join(
-                                train_image_source_dir, file.replace(".json", ".jpg")
-                            )
-                        )
-                        width, height = image.size
-
-                        # normalize values
-                        x_center /= width
-                        y_center /= height
-                        w /= width
-                        h /= height
-
-                        out_file.write(f"{label} {x_center} {y_center} {w} {h}\n")
-
-    # for validation data
-
-    val_output_dir = os.path.join(output_dir, "val")
-    if not os.path.exists(val_output_dir):
-        os.makedirs(val_output_dir)
-
-    val_source_dir = "data/DeepFashion/validation/annos"
-    val_image_source_dir = (
-        "C:/Users/troyd/Programs/ECE379K/datasets/deepfashion_yolo_format/images/val"
-    )
-
-    # loop through each json file in the source directory
-
-    for file in tqdm.tqdm(os.listdir(val_source_dir)):
-
-        if file.endswith(".json"):
-            with open(os.path.join(val_source_dir, file)) as f:
-                data = json.load(f)
-                label_file = file.replace(".json", ".txt")
-                with open(os.path.join(val_output_dir, label_file), "w") as out_file:
-                    for obj in data:
-                        if type(data[obj]) is not dict:
-                            continue
-                        label = data[obj].get("category_id") - 1
-                        x1, y1, x2, y2 = data[obj].get("bounding_box")
-                        x_center = (x1 + x2) / 2
-                        y_center = (y1 + y2) / 2
-                        w = x2 - x1
-                        h = y2 - y1
-
-                        # file_path = os.path.join(val_source_dir, file)
-                        # image_file = file_path.replace(".json", ".jpg")
-                        # image_file = image_file.replace("annos", "image")
-                        # image_file = image_file.replace("\\", "/")
-
-                        image = Image.open(
-                            os.path.join(
-                                val_image_source_dir, file.replace(".json", ".jpg")
-                            )
-                        )
-                        width, height = image.size
-
-                        # normalize values
-                        x_center /= width
-                        y_center /= height
-                        w /= width
-                        h /= height
-
-                        out_file.write(f"{label} {x_center} {y_center} {w} {h}\n")
-
-
-def get_classes():
-    # loop through training data to get all unique classes paired with their ids
-
-    train_source_dir = "data/train/annos"
-
-    classes = {}
-
-    for file in os.listdir(train_source_dir):
-
-        if file.endswith(".json"):
-            with open(os.path.join(train_source_dir, file)) as f:
-                data = json.load(f)
+            # Create the output file
+            with open(output_file_path, "w") as output_file:
                 for obj in data:
+                    # Skip non-dictionary objects
                     if type(data[obj]) is not dict:
                         continue
+
+                    # Get the bounding box label
                     label = data[obj].get("category_id") - 1
-                    if label not in classes:
-                        classes[label] = data[obj].get("category_name")
 
-    # sort classes by id
-    classes = dict(sorted(classes.items()))
+                    # Store the label name
+                    if label not in labels:
+                        labels[label] = data[obj].get("category_name")
 
-    with open("data/classes.txt", "w") as f:
-        for key, value in classes.items():
-            f.write(f"{key}: {value}\n")
+                    # Get bounding box coordinates
+                    x_min, y_min, x_max, y_max = data[obj].get("bounding_box")
+
+                    # Convert to x_center, y_center, width, height.
+                    x_center = (x_min + x_max) / 2
+                    y_center = (y_min + y_max) / 2
+                    w = x_max - x_min
+                    h = y_max - y_min
+
+                    # Read the image
+                    image_file_path = os.path.join(image_dir, raw_file_name) + ".jpg"
+
+                    image = Image.open(image_file_path)
+
+                    # Get the image dimensions
+                    width, height = image.size
+
+                    # Normalize values relative to image size
+                    x_center /= width
+                    y_center /= height
+                    w /= width
+                    h /= height
+
+                    # Write the data to the output file
+                    output_file.write(f"{label} {x_center} {y_center} {w} {h}\n")
+
+    # Sort the labels by id
+    labels = dict(sorted(labels.items()))
+
+    return labels
 
 
-preprocess_yolo_labels()
+# Preprocess the training data
+labels = preprocess_labels(
+    meta_dir="data/DeepFashion2/train/annos",
+    image_dir="data/DeepFashion2/train/image",
+    output_dir="/home/tdutton/Programs/ECE379K/image-atlas/data/DeepFashion2Yolo/labels/train",
+)
+
+# Preprocess the validation data
+preprocess_labels(
+    meta_dir="data/DeepFashion2/validation/annos",
+    image_dir="data/DeepFashion2/validation/image",
+    output_dir="/home/tdutton/Programs/ECE379K/image-atlas/data/DeepFashion2Yolo/labels/val",
+)
+
+# Print the labels
+print(f"Unique id-label pairs in the dataset: {len(labels)}\n")
+
+for id, name in labels.items():
+    print(f"{id}: {name}")
