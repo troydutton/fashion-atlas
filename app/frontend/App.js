@@ -1,24 +1,10 @@
-import { StyleSheet, View } from 'react-native';
 import CameraView from './CameraView';
-import { useEffect } from 'react';
+import { Image, Button, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions  } from 'react-native';
 
 export default function App() {
-
-  useEffect(() => {
-    fetch("/members").then(res => res.json()).then(console.log);
-  }
-  , []);
-  
   return (
-    <View style={styles.container}>
+    <View style={{flex: 1, justifyContent: 'center'}}>
       <CameraView />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-  }
-});
