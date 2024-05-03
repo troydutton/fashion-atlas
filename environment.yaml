@@ -1,4 +1,4 @@
-name: image-atlas
+name: fashion-atlas
 channels:
   - conda-forge
   - pytorch
@@ -14,5 +14,6 @@ dependencies:
   - pandas
   - matplotlib
   - tqdm
+  - flask
   - pip:
     - tensorboard
