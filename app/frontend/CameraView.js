@@ -34,6 +34,24 @@ export default function CameraView() {
       const photo = await cameraRef.current.takePictureAsync();
       console.log(photo);
     }
+
+    console.log("Taking picture...");
+
+    const data = JSON.stringify({
+      photo: "gay"
+    });
+
+    console.log("Data:", data);
+
+    const response = await fetch('/image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: data
+    });
+
+    console.log("Response:", response);
   }
 
   function flipCamera() {
