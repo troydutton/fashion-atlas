@@ -59,7 +59,8 @@ export default function CameraView({ navigation }) {
         }
         return response.json();
       }).then(data => {
-        navigation.navigate('Selection', {image: photo.uri, detections: data});
+        // navigation.navigate('Images', {image: photo.uri, detections: data});
+        navigation.navigate('Images', {similarImages: data[0].similar_images});
       }).catch(error => {
         // Handle the error
         console.error(error);

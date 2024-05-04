@@ -94,7 +94,7 @@ def calculate_features(image: Image) -> np.ndarray:
         return encoder(image).cpu()
 
 
-def get_similar_images(image: Image, label: int, n: int = 5) -> list[Image.Image]:
+def get_similar_images(image: Image, label: int, n: int = 4) -> list[Image.Image]:
     """
     Get the n most similar images to the given image.
     """
@@ -141,11 +141,8 @@ def infer(image: Image, min_confidence: float = 0.5):
     # Get the predicted detections
     detections = predictions.boxes
 
-    # Threshold the predictions
-    detections = detections[detections.conf > min_confidence]
-
-    if len(detections) == 0:
-        return None
+    # Get the bounding box with the highest confidence
+    detection = detections[np.argmax(detections.conf.cpu().numpy())]
 
     results = []
 

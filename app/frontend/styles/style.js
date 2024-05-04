@@ -45,7 +45,7 @@ export const styles = StyleSheet.create({
     marginTop: 45
   },
   image: {
-    // height: cameraHeight,
-    // position: 'relative',
+    width: windowWidth * 0.5,
+    height: (windowHeight - 40) * 0.5,
   },
 });
