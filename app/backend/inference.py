@@ -131,28 +131,12 @@ def get_similar_images(image: Image, label: int, n: int = 5) -> list[Image.Image
     return similar_images
 
 
-def display_similar_images(image: Image, similar_images: list[Image.Image]):
-    """
-    Display the similar images.
-    """
-
-    fig, axs = plt.subplots(1, len(similar_images) + 1, figsize=(20, 10))
-
-    # Display the anchor image
-    axs[0].imshow(image)
-    axs[0].set_title("Anchor Image")
-
-    for i, similar_image in enumerate(similar_images, 1):
-        axs[i].imshow(similar_image)
-        axs[i].set_title(f"Similar Image {i}")
-    plt.savefig("output.jpg")
-
-    # plt.show()
-
-
-def infer(image: Image, min_confidence: float = 0.5) -> Image:
+def infer(image: Image, min_confidence: float = 0.5):
     # Get the predictions
     predictions = yolo.predict(image)[0]
+
+    if len(predictions) == 0:
+        return None
 
     # Get the predicted detections
     detections = predictions.boxes
@@ -160,10 +144,15 @@ def infer(image: Image, min_confidence: float = 0.5) -> Image:
     # Threshold the predictions
     detections = detections[detections.conf > min_confidence]
 
+    if len(detections) == 0:
+        return None
+
     results = []
 
     for detection in detections:
         bounding_box = detection.xyxy.cpu().numpy().squeeze()
+
+        bounding_box = [int(x) for x in bounding_box]
 
         image_cropped = image.crop(bounding_box)
 
@@ -174,12 +163,10 @@ def infer(image: Image, min_confidence: float = 0.5) -> Image:
 
         results.append(
             {
-                "bounding_box": bounding_box,
+                "bounding_box": list(bounding_box),
                 "class": CLASS_TO_NAME[cls],
                 "similar_images": similar_images,
             }
         )
-
-        display_similar_images(image_cropped, similar_images)
 
     return results

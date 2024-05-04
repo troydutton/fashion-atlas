@@ -7,7 +7,9 @@ import { styles } from './styles/style';
 export default function CameraView() {
   const [type, setType] = useState(CameraType.back);
   const [permission, requestPermission] = Camera.useCameraPermissions();
-  const [photoUri, setPhotoUri] = useState(null);
+  const [showCamera, setShowCamera] = useState(true);
+  const [similarImages, setSimilarImages] = useState([]);
+  
 
   // Calculate camera height based on screen width (Assumes 16:9 aspect ratio)
   const { width } = useWindowDimensions();
@@ -37,7 +39,6 @@ export default function CameraView() {
 
     if (cameraRef.current) {
       const photo = await cameraRef.current.takePictureAsync();
-      setPhotoUri(photo.uri); // Save the photo URI to state
 
       // Create a FormData object to send the image to the server
       let formData = new FormData();
@@ -55,6 +56,22 @@ export default function CameraView() {
         headers: {
           'content-type': 'multipart/form-data',
         },
+      }).then(response => {
+        if (response.status === 400) {
+          throw new Error('No image provided');
+        } else if (response.status === 500) {
+          throw new Error('No detections');
+        } else if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      }).then(data => {
+        // console.log(data[0]["similar_images"][0]);
+        setSimilarImages(data[0]["similar_images"]);
+        setShowCamera(false);
+      }).catch(error => {
+        // Handle the error
+        console.error(error);
       });
     }
   }
@@ -64,15 +81,27 @@ export default function CameraView() {
   }
   return (
     <View style={styles.container}>
-      <Camera ref={cameraRef} ratio="16:9" style={{ height: camera_height, marginTop: 45 }} type={type} />
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.flipButton} onPress={flipCamera}>
-          <Icon name="synchronization-button-with-two-arrows" color="white" width="60" height="60" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.takePictureButton} onPress={takePicture}>
-          <Icon name="radio-on-button" color="white" width="70" height="70" />
-        </TouchableOpacity>
-      </View>
+      {showCamera ? (
+        <>
+          <Camera ref={cameraRef} ratio="16:9" style={{height: camera_height, marginTop: 45}} type={type} />
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity style={styles.flipButton} onPress={flipCamera}>
+              <Icon name="synchronization-button-with-two-arrows" color="white" width="60" height="60"/>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.takePictureButton} onPress={takePicture}>
+              <Icon name="radio-on-button" color="white" width="70" height="70"/>
+            </TouchableOpacity>
+          </View>
+        </>
+      ) : (
+        similarImages.map((base64Image, index) => (
+          <Image
+            key={index}
+            style={{width: 100, height: 100}}
+            source={{uri: `data:image/jpeg;base64,${base64Image}`}}
+          />
+        ))
+      )}
     </View>
   );
 }
