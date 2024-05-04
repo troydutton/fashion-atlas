@@ -1,7 +1,8 @@
 import { Camera, CameraType } from 'expo-camera';
 import { useState, useRef } from 'react';
-import { Image, Button, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions  } from 'react-native';
+import { Image, Button, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-ico-material-design';
+import { styles } from './styles/style';
 
 export default function CameraView() {
   const [type, setType] = useState(CameraType.back);
@@ -11,24 +12,26 @@ export default function CameraView() {
   
 
   // Calculate camera height based on screen width (Assumes 16:9 aspect ratio)
-  const {width} = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const camera_height = Math.round((width * 16) / 9);
-  
+
   const cameraRef = useRef(null);
 
   if (!permission) {
     // Camera permissions are still loading
-    return <View/>;
+    return <View />;
   }
 
+  permission.granted = false; // For testing purposes
   if (!permission.granted) {
-    // Camera permissions are not granted yet
     return (
       <View style={styles.container}>
-        <Text style={{ textAlign: 'center' }}>Allow access to camera to continue.</Text>
+        <View style={styles.textContainer}>
+          <Text style={styles.text}>Allow access to camera to continue.</Text>
+        </View>
         <Button onPress={requestPermission} title="Allow" />
       </View>
-    );
+    )
   }
 
   async function takePicture() {
@@ -39,13 +42,13 @@ export default function CameraView() {
 
       // Create a FormData object to send the image to the server
       let formData = new FormData();
-  
+
       formData.append('image', {
         uri: photo.uri,
         type: 'image/jpeg',
         name: 'image.jpg',
       });
-  
+
       // Send the FormData object to the server
       fetch('http://100.110.148.13:5000/image', {
         method: 'POST',
@@ -102,24 +105,3 @@ export default function CameraView() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'black', // Set the background color to black
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center', // Center the buttons horizontally
-    backgroundColor: 'transparent',
-    padding: 20, // Add some padding if needed
-  },
-  flipButton: {
-    alignSelf: 'center',
-    position: 'absolute', // Position the flip button absolutely
-    left: 40, // Position it a little to the left
-  },
-  takePictureButton: {
-    alignSelf: 'center', // Center the take picture button vertically
-  }
-});
