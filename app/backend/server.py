@@ -1,9 +1,8 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 from PIL import Image
 
 app = Flask(__name__)
-# enable CORS
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 
@@ -12,11 +11,6 @@ def image():
     # Get the file from the request
     file = request.files["image"]
 
-    # Save the file
-    # file.save("uploaded_image.jpg")
-
-    # Load the image
-    # img = Image.open("uploaded_image.jpg")
     image = Image.open(file)
 
     image.show()
