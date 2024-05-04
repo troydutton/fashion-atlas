@@ -1,8 +1,7 @@
 import { Camera, CameraType } from 'expo-camera';
 import { useState, useRef } from 'react';
 import { Image, Button, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions  } from 'react-native';
-
-
+import Icon from 'react-native-ico-material-design';
 
 export default function CameraView() {
   const [type, setType] = useState(CameraType.back);
@@ -47,7 +46,7 @@ export default function CameraView() {
       });
   
       // Send the FormData object to the server
-      fetch('/image', {
+      fetch('http://100.110.148.60:5000/image', {
         method: 'POST',
         body: formData,
         headers: {
@@ -61,37 +60,37 @@ export default function CameraView() {
     setType(current => (current === CameraType.back ? CameraType.front : CameraType.back));
   }
   return (
-    <View style={{ flex: 1 }}>
-      <Camera ref={cameraRef} ratio="16:9" style={{height: camera_height}} type={type}>
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.button} onPress={flipCamera}>
-            <Text style={styles.text}>Flip Camera</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={takePicture}>
-            <Text style={styles.text}>Take Picture</Text>
-          </TouchableOpacity>
-        </View>
-      </Camera>
-    {photoUri && <Image source={{ uri: photoUri }} style={{ width: 200, height: 200 }} />}
-  </View>
-  )
+    <View style={styles.container}>
+      <Camera ref={cameraRef} ratio="16:9" style={{height: camera_height, marginTop: 45}} type={type} />
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.flipButton} onPress={flipCamera}>
+          <Icon name="synchronization-button-with-two-arrows" color="white" width="60" height="60"/>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.takePictureButton} onPress={takePicture}>
+          <Icon name="radio-on-button" color="white" width="70" height="70"/>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: 'black', // Set the background color to black
+  },
   buttonContainer: {
-    flex: 1,
     flexDirection: 'row',
+    justifyContent: 'center', // Center the buttons horizontally
     backgroundColor: 'transparent',
-    margin: 64,
+    padding: 20, // Add some padding if needed
   },
-  button: {
-    flex: 1,
-    alignSelf: 'flex-end',
-    alignItems: 'center',
+  flipButton: {
+    alignSelf: 'center',
+    position: 'absolute', // Position the flip button absolutely
+    left: 40, // Position it a little to the left
   },
-  text: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
-  },
+  takePictureButton: {
+    alignSelf: 'center', // Center the take picture button vertically
+  }
 });
