@@ -1,0 +1,18 @@
+path: /home/tdutton/Programs/ECE379K/image-atlas/data/DeepFashion2Yolo
+train: /home/tdutton/Programs/ECE379K/image-atlas/data/DeepFashion2Yolo/images/train
+val: /home/tdutton/Programs/ECE379K/image-atlas/data/DeepFashion2Yolo/images/val
+
+names:
+  0: short sleeve top
+  1: long sleeve top
+  2: short sleeve outwear
+  3: long sleeve outwear
+  4: vest
+  5: sling
+  6: shorts
+  7: trousers
+  8: skirt
+  9: short sleeve dress
+  10: long sleeve dress
+  11: vest dress
+  12: sling dress
