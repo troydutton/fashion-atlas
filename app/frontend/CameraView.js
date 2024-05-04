@@ -1,6 +1,6 @@
 import { Camera, CameraType } from 'expo-camera';
 import { useState, useRef } from 'react';
-import { Image, Button, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Image, Button, Text, TouchableOpacity, View} from 'react-native';
 import Icon from 'react-native-ico-material-design';
 import { styles } from './styles/style';
 
