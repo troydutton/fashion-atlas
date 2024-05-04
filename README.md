@@ -1,2 +1,2 @@
-# image-atlas
+# fashion-atlas
 Visual Search Engine
