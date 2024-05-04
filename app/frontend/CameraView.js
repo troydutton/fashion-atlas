@@ -46,7 +46,7 @@ export default function CameraView() {
       });
   
       // Send the FormData object to the server
-      fetch('http://100.110.148.60:5000/image', {
+      fetch('http://100.110.148.13:5000/image', {
         method: 'POST',
         body: formData,
         headers: {
