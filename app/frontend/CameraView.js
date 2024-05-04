@@ -9,11 +9,6 @@ export default function CameraView() {
   const [permission, requestPermission] = Camera.useCameraPermissions();
   const [showCamera, setShowCamera] = useState(true);
   const [similarImages, setSimilarImages] = useState([]);
-  
-
-  // Calculate camera height based on screen width (Assumes 16:9 aspect ratio)
-  const { width } = useWindowDimensions();
-  const camera_height = Math.round((width * 16) / 9);
 
   const cameraRef = useRef(null);
 
@@ -22,7 +17,6 @@ export default function CameraView() {
     return <View />;
   }
 
-  permission.granted = false; // For testing purposes
   if (!permission.granted) {
     return (
       <View style={styles.container}>
@@ -83,7 +77,7 @@ export default function CameraView() {
     <View style={styles.container}>
       {showCamera ? (
         <>
-          <Camera ref={cameraRef} ratio="16:9" style={{height: camera_height, marginTop: 45}} type={type} />
+          <Camera ref={cameraRef} ratio="16:9" style={styles.camera} type={type} />
           <View style={styles.buttonContainer}>
             <TouchableOpacity style={styles.flipButton} onPress={flipCamera}>
               <Icon name="synchronization-button-with-two-arrows" color="white" width="60" height="60"/>

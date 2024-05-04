@@ -2,7 +2,8 @@
 import { Image, Button, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions, Dimensions} from 'react-native';
 
 const windowWidth = Dimensions.get('window').width;
-const windowHeight = Dimensions.get('window').height;
+const windowHeight = Dimensions.get('window').height;;
+const cameraHeight = Math.round((windowWidth * 16) / 9);
 
 // Define your styles here
 export const styles = StyleSheet.create({
@@ -38,5 +39,9 @@ export const styles = StyleSheet.create({
   },
   takePictureButton: {
     alignSelf: 'center', // Center the take picture button vertically
+  },
+  camera: {
+    height: cameraHeight,
+    marginTop: 45
   }
 });
