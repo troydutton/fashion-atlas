@@ -15,5 +15,6 @@ dependencies:
   - matplotlib
   - tqdm
   - flask
+  - flask_cors
   - pip:
     - tensorboard
