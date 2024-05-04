@@ -12,7 +12,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  textContainer: {
+  permissionTextContainer: {
     marginTop: windowHeight * 0.5,
     justifyContent: 'center', 
     marginBottom: 20,
@@ -24,7 +24,7 @@ export const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: 'black', // Set the background color to black
+    backgroundColor: 'black',
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -43,5 +43,9 @@ export const styles = StyleSheet.create({
   camera: {
     height: cameraHeight,
     marginTop: 45
-  }
+  },
+  image: {
+    width: windowWidth * 0.5,
+    height: (windowHeight - 40) * 0.5,
+  },
 });
