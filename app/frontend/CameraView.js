@@ -1,15 +1,14 @@
 import { Camera, CameraType } from 'expo-camera';
 import { useState, useRef } from 'react';
-import { Image, Button, Text, TouchableOpacity, View} from 'react-native';
+import { Button, Text, TouchableOpacity, View} from 'react-native';
+import { useIsFocused  } from '@react-navigation/native';
 import Icon from 'react-native-ico-material-design';
 import { styles } from './styles/style';
 
-export default function CameraView() {
+export default function CameraView({ navigation }) {
   const [type, setType] = useState(CameraType.back);
   const [permission, requestPermission] = Camera.useCameraPermissions();
-  const [showCamera, setShowCamera] = useState(true);
-  const [similarImages, setSimilarImages] = useState([]);
-
+  const isFocused = useIsFocused()
   const cameraRef = useRef(null);
 
   if (!permission) {
@@ -20,7 +19,7 @@ export default function CameraView() {
   if (!permission.granted) {
     return (
       <View style={styles.container}>
-        <View style={styles.textContainer}>
+        <View style={styles.permissionTextContainer}>
           <Text style={styles.text}>Allow access to camera to continue.</Text>
         </View>
         <Button onPress={requestPermission} title="Allow" />
@@ -60,9 +59,7 @@ export default function CameraView() {
         }
         return response.json();
       }).then(data => {
-        // console.log(data[0]["similar_images"][0]);
-        setSimilarImages(data[0]["similar_images"]);
-        setShowCamera(false);
+        navigation.navigate('Selection', {image: photo.uri, detections: data});
       }).catch(error => {
         // Handle the error
         console.error(error);
@@ -75,27 +72,15 @@ export default function CameraView() {
   }
   return (
     <View style={styles.container}>
-      {showCamera ? (
-        <>
-          <Camera ref={cameraRef} ratio="16:9" style={styles.camera} type={type} />
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.flipButton} onPress={flipCamera}>
-              <Icon name="synchronization-button-with-two-arrows" color="white" width="60" height="60"/>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.takePictureButton} onPress={takePicture}>
-              <Icon name="radio-on-button" color="white" width="70" height="70"/>
-            </TouchableOpacity>
-          </View>
-        </>
-      ) : (
-        similarImages.map((base64Image, index) => (
-          <Image
-            key={index}
-            style={{width: 100, height: 100}}
-            source={{uri: `data:image/jpeg;base64,${base64Image}`}}
-          />
-        ))
-      )}
+        {isFocused && <Camera ref={cameraRef} ratio="16:9" style={styles.camera} type={type} />}
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity style={styles.flipButton} onPress={flipCamera}>
+            <Icon name="synchronization-button-with-two-arrows" color="white" width="60" height="60"/>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.takePictureButton} onPress={takePicture}>
+            <Icon name="radio-on-button" color="white" width="70" height="70"/>
+          </TouchableOpacity>
+        </View>
     </View>
   );
 }
