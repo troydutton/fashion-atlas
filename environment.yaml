@@ -16,5 +16,4 @@ dependencies:
   - tqdm
   - flask
   - flask_cors
-  - pip:
-    - tensorboard
+  - wandb

@@ -48,9 +48,7 @@ encoder = models.resnet50()
 # Load the weights
 encoder.load_state_dict(
     torch.load(
-        os.path.join(
-            model_root, "ResNet50 Cosine Similarity Loss Margin 0.2/checkpoint-6.pt"
-        )
+        os.path.join(model_root, "ResNet50 Cosine Similarity Margin=1\checkpoint-3.pt")
     )
 )
 
