@@ -23,11 +23,14 @@ DIRECTORY_MAP = ["upper_body", "lower_body", "dresses"]
 # Map labels to their corresponding segmentations (data/DressCode/readme.txt)
 SEGMENT_MAP = [[4], [5, 6], [7]]
 
-# Map labels to their corresponding classes (data/DeepFashion/DeepFashion2.yaml)
+# Map classes to their corresponding labels (data/DeepFashion/DeepFashion2.yaml)
 CLASS_MAP = [[0, 1, 2, 3, 4], [6, 7, 8], [9, 10, 11, 12]]
 
 # Set the seed
 torch.manual_seed(42)
+
+# Set the device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class FashionDataset(Dataset):
@@ -430,6 +433,57 @@ def train(
         )
 
 
+def precompute_dataset_features(
+    encoder: nn.Module, transformations: transforms.Compose, data: pd.DataFrame
+):
+    features = {"upper_body": [], "lower_body": [], "dresses": []}
+    feature_indices = {"upper_body": [], "lower_body": [], "dresses": []}
+
+    encoder.eval()
+
+    for i, (_, garment, label) in tqdm(
+        enumerate(data.values),
+        desc="Calculating Features",
+        total=len(data),
+        unit="image",
+    ):
+        # Load in the garment image
+        garment_image = Image.open(
+            os.path.join(
+                DRESSCODE_ROOT, DIRECTORY_MAP[label], "cropped_images", garment
+            )
+        ).convert("RGB")
+
+        # Apply the transformations
+        garment_image = transformations(garment_image)
+
+        # Calculate the features
+        with torch.no_grad():
+            garment_features = encoder(garment_image.unsqueeze(0).to(device)).cpu()
+
+        # Get the features
+        features[DIRECTORY_MAP[label]].append(garment_features)
+        feature_indices[DIRECTORY_MAP[label]].append(i)
+
+    features["upper_body"] = torch.cat(features["upper_body"])
+    features["lower_body"] = torch.cat(features["lower_body"])
+    features["dresses"] = torch.cat(features["dresses"])
+
+    feature_indices["upper_body"] = np.array(feature_indices["upper_body"])
+    feature_indices["lower_body"] = np.array(feature_indices["lower_body"])
+    feature_indices["dresses"] = np.array(feature_indices["dresses"])
+
+    features["upper_body"].shape, features["lower_body"].shape, features[
+        "dresses"
+    ].shape
+
+    # Save the features
+    torch.save(features, os.path.join(DRESSCODE_ROOT, "train_features.pt"))
+    torch.save(
+        feature_indices, os.path.join(DRESSCODE_ROOT, "train_feature_indices.pt")
+    )
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         print("Usage: python encoder.py <command>")
@@ -438,9 +492,6 @@ if __name__ == "__main__":
     if sys.argv[1] == "preprocess":
         preprocess_images()
     elif sys.argv[1] == "train":
-        # Set the device
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
         # Load the model
         encoder = models.resnet50()
 
@@ -448,11 +499,12 @@ if __name__ == "__main__":
 
         # Load the dataset
         train_data = FashionDataset(
-            DRESSCODE_ROOT, "data/DressCode/train_pairs_cropped.txt"
+            DRESSCODE_ROOT, os.path.join(DRESSCODE_ROOT, "train_pairs_cropped.txt")
         )
 
         test_data = FashionDataset(
-            DRESSCODE_ROOT, "data/DressCode/test_pairs_paired_cropped.txt"
+            DRESSCODE_ROOT,
+            os.path.join(DRESSCODE_ROOT, "test_pairs_paired_cropped.txt"),
         )
 
         # Define the training dataloader
@@ -473,6 +525,33 @@ if __name__ == "__main__":
             device=device,
             model_name="Test",
         )
+    elif sys.argv[1] == "precompute":
+        # Read in the dataset
+        data = pd.read_csv(
+            os.path.join(DRESSCODE_ROOT, "train_pairs_cropped.txt"),
+            delimiter="\t",
+            header=None,
+            names=["model", "garment", "label"],
+        )
+
+        # Load in the encoder network
+        encoder = models.resnet50()
+
+        # Load the weights
+        encoder.load_state_dict(
+            torch.load("models\ResNet50 Cosine Similarity Margin=1\checkpoint-3.pt")
+        )
+
+        # Send the model to the device
+        encoder = encoder.to(device)
+
+        # Define the transformations for the network
+        transformations = transforms.Compose(
+            [transforms.Resize((256, 192)), transforms.ToTensor()]
+        )
+
+        precompute_dataset_features(encoder, transformations, data)
+
     else:
-        print("Invalid command. Please use 'preprocess' or 'train'.")
+        print("Invalid command. Please use 'preprocess', 'train', or 'precompute'.")
         sys.exit(1)
