@@ -1,11 +1,17 @@
-import argparse
 import json
 import os
 import sys
 
+import torch
 from PIL import Image
 from tqdm import tqdm
 from ultralytics import YOLO
+
+# Set the seed
+torch.manual_seed(42)
+
+# Set the device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def preprocess_labels(meta_dir: str, image_dir: str, output_dir: str):
@@ -79,6 +85,25 @@ def preprocess_labels(meta_dir: str, image_dir: str, output_dir: str):
     return labels
 
 
+def move_images(image_dir: str, output_dir: str):
+    # Verify the output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Move each image in the source directory
+    for input_file_name in tqdm(
+        os.listdir(image_dir), desc="Moving Images", unit="file"
+    ):
+        # Skip non-jpg files
+        if not input_file_name.endswith(".jpg"):
+            continue
+
+        input_file_path = os.path.join(image_dir, input_file_name)
+        output_file_path = os.path.join(output_dir, input_file_name)
+
+        # Move the image
+        os.rename(input_file_path, output_file_path)
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         print("Usage: python yolo.py <command>")
@@ -89,14 +114,26 @@ if __name__ == "__main__":
         labels = preprocess_labels(
             meta_dir="data/DeepFashion2/train/annos",
             image_dir="data/DeepFashion2/train/image",
-            output_dir="/home/tdutton/Programs/ECE379K/image-atlas/data/DeepFashion2Yolo/labels/train",
+            output_dir="data/DeepFashion2Yolo/labels/train",
         )
 
         # Preprocess the validation data
         preprocess_labels(
             meta_dir="data/DeepFashion2/validation/annos",
             image_dir="data/DeepFashion2/validation/image",
-            output_dir="/home/tdutton/Programs/ECE379K/image-atlas/data/DeepFashion2Yolo/labels/val",
+            output_dir="data/DeepFashion2Yolo/labels/val",
+        )
+
+        # Move the training images
+        move_images(
+            image_dir="data/DeepFashion2/train/image",
+            output_dir="data/DeepFashion2Yolo/images/train",
+        )
+
+        # Move the validation images
+        move_images(
+            image_dir="data/DeepFashion2/validation/image",
+            output_dir="data/DeepFashion2Yolo/images/val",
         )
 
         # Print the labels
@@ -105,32 +142,16 @@ if __name__ == "__main__":
         for id, name in labels.items():
             print(f"{id}: {name}")
     elif sys.argv[1] == "train":
-        # Set the device
-         # Load Model
+        # Load Model
         model = model = YOLO("yolov8m")
-
-        # Parse command line arguments
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--epochs", type=int, help="Number of epochs (e.g. 10)" required=False, default=10)
-        parser.add_argument("--batch_size", type=int, help="Batch size (e.g. 16)", required=False, default=16)
-        parser.add_argument(
-            "--device", type=str, help="Device (e.g. 0)", required=False, default="0"
-        )
-        args = parser.parse_args()
 
         # Train the model
         model.train(
             data="config/DeepFashion2.yaml",
-            epochs=args.epochs,
-            batch=args.batch_size,
-            device=args.device,
-            project="logs/YOLO",
+            epochs=10,
+            batch=16,
+            device=device,
         )
     else:
         print("Invalid command. Please use 'preprocess' or 'train'.")
         sys.exit(1)
-
-    
-    
-
-   
