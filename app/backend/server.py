@@ -1,4 +1,5 @@
 import base64
+import sys
 from io import BytesIO
 
 import inference
@@ -48,4 +49,8 @@ def image():
 
 
 if __name__ == "__main__":
-    app.run(host="100.110.148.13", port=5000, debug=True)
+    if len(sys.argv) > 1:
+        host = sys.argv[1]
+        app.run(host=host, port=5000, debug=True)
+    else:
+        print("No host provided, please provide a host")
