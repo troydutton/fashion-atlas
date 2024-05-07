@@ -1,8 +1,11 @@
+import argparse
 import json
 import os
+import sys
 
 from PIL import Image
 from tqdm import tqdm
+from ultralytics import YOLO
 
 
 def preprocess_labels(meta_dir: str, image_dir: str, output_dir: str):
@@ -76,22 +79,58 @@ def preprocess_labels(meta_dir: str, image_dir: str, output_dir: str):
     return labels
 
 
-# Preprocess the training data
-labels = preprocess_labels(
-    meta_dir="data/DeepFashion2/train/annos",
-    image_dir="data/DeepFashion2/train/image",
-    output_dir="/home/tdutton/Programs/ECE379K/image-atlas/data/DeepFashion2Yolo/labels/train",
-)
+if __name__ == "__main__":
+    if len(sys.argv) == 1:
+        print("Usage: python yolo.py <command>")
+        sys.exit(1)
 
-# Preprocess the validation data
-preprocess_labels(
-    meta_dir="data/DeepFashion2/validation/annos",
-    image_dir="data/DeepFashion2/validation/image",
-    output_dir="/home/tdutton/Programs/ECE379K/image-atlas/data/DeepFashion2Yolo/labels/val",
-)
+    if sys.argv[1] == "preprocess":
+        # Preprocess the training data
+        labels = preprocess_labels(
+            meta_dir="data/DeepFashion2/train/annos",
+            image_dir="data/DeepFashion2/train/image",
+            output_dir="/home/tdutton/Programs/ECE379K/image-atlas/data/DeepFashion2Yolo/labels/train",
+        )
 
-# Print the labels
-print(f"Unique id-label pairs in the dataset: {len(labels)}\n")
+        # Preprocess the validation data
+        preprocess_labels(
+            meta_dir="data/DeepFashion2/validation/annos",
+            image_dir="data/DeepFashion2/validation/image",
+            output_dir="/home/tdutton/Programs/ECE379K/image-atlas/data/DeepFashion2Yolo/labels/val",
+        )
 
-for id, name in labels.items():
-    print(f"{id}: {name}")
+        # Print the labels
+        print(f"Unique id-label pairs in the dataset: {len(labels)}\n")
+
+        for id, name in labels.items():
+            print(f"{id}: {name}")
+    elif sys.argv[1] == "train":
+        # Set the device
+         # Load Model
+        model = model = YOLO("yolov8m")
+
+        # Parse command line arguments
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--epochs", type=int, help="Number of epochs (e.g. 10)" required=False, default=10)
+        parser.add_argument("--batch_size", type=int, help="Batch size (e.g. 16)", required=False, default=16)
+        parser.add_argument(
+            "--device", type=str, help="Device (e.g. 0)", required=False, default="0"
+        )
+        args = parser.parse_args()
+
+        # Train the model
+        model.train(
+            data="config/DeepFashion2.yaml",
+            epochs=args.epochs,
+            batch=args.batch_size,
+            device=args.device,
+            project="logs/YOLO",
+        )
+    else:
+        print("Invalid command. Please use 'preprocess' or 'train'.")
+        sys.exit(1)
+
+    
+    
+
+   
