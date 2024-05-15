@@ -37,8 +37,6 @@ def image():
                 convert_image_to_base64(img) for img in result["similar_images"]
             ]
 
-        print(results[0]["similar_images"][0][:50])
-
         return jsonify(results), 200
     except KeyError:
         # The client did not provide an image

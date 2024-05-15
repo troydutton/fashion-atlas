@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torchvision.models as models
 import torchvision.transforms as transforms
 import wandb
@@ -323,7 +324,8 @@ def train(
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, model_name), exist_ok=True)
 
-    optimizer = torch.optim.Adam(encoder.parameters(), lr=1e-3)
+    optimizer = optim.Adam(encoder.parameters(), lr=1e-3, weight_decay=1e-4)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
 
     # Wandb logger
     logger = wandb.init(dir=log_dir, project="fashion-atlas", name=model_name)
@@ -352,7 +354,9 @@ def train(
             negative_features = encoder(negative)
 
             # Compute the loss
-            loss = loss_fcn(anchor_features, positive_features, negative_features)
+            loss: torch.Tensor = loss_fcn(
+                anchor_features, positive_features, negative_features
+            )
 
             # Log loss to tensorboard
             logger.log(
@@ -426,11 +430,15 @@ def train(
 
         print(f"Epoch {epoch} Validation Loss: {validation_loss / len(test_data)}")
 
+        scheduler.step()
+
         # Save the model
         torch.save(
             encoder.state_dict(),
             f"{os.path.join(output_dir, model_name)}/checkpoint-{epoch + 1}.pt",
         )
+
+    logger.finish()
 
 
 def precompute_dataset_features(
@@ -508,10 +516,10 @@ if __name__ == "__main__":
         )
 
         # Define the training dataloader
-        train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
+        train_loader = DataLoader(train_data, batch_size=50, shuffle=True)
 
         # Define the validation dataloader
-        test_loader = DataLoader(test_data, batch_size=32, shuffle=False)
+        test_loader = DataLoader(test_data, batch_size=50, shuffle=False)
 
         train(
             encoder,
@@ -519,11 +527,11 @@ if __name__ == "__main__":
             test_loader,
             nn.TripletMarginWithDistanceLoss(
                 distance_function=lambda x, y: 1 - torch.cosine_similarity(x, y),
-                margin=1,
+                margin=1.5,
             ),
-            epochs=3,
+            epochs=6,
             device=device,
-            model_name="Test",
+            model_name="ResNet50 Cosine Similarity M=1.5",
         )
     elif sys.argv[1] == "precompute":
         # Read in the dataset
