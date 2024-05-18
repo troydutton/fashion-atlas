@@ -1,14 +1,17 @@
 import os
 import random
+from typing import Dict, Tuple
 
 import pandas as pd
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import torchvision.models as models
 import torchvision.transforms as transforms
 import wandb
 from PIL import Image
+from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from wandb.wandb_run import Run
@@ -42,61 +45,131 @@ class DressCodeDataset(Dataset):
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self, index: int) -> dict:
+    def __getitem__(self, index: int) -> Tuple[Tensor, Tensor, Tensor]:
         model, garment, label = self.data.iloc[index]
 
         # Load the anchor & positive images (random choice between model and garment)
         if random.choice([True, False]):
-            anchor = Image.open(
-                os.path.join(self.root, DIRECTORY_MAP[label], "cropped_images", model)
-            ).convert("RGB")
+            anchor = Image.open(os.path.join(self.root, DIRECTORY_MAP[label], "cropped_images", model)).convert("RGB")
 
-            positive = Image.open(
-                os.path.join(self.root, DIRECTORY_MAP[label], "cropped_images", garment)
-            ).convert("RGB")
+            positive = Image.open(os.path.join(self.root, DIRECTORY_MAP[label], "cropped_images", garment)).convert("RGB")
         else:
-            anchor = Image.open(
-                os.path.join(self.root, DIRECTORY_MAP[label], "cropped_images", garment)
-            ).convert("RGB")
+            anchor = Image.open(os.path.join(self.root, DIRECTORY_MAP[label], "cropped_images", garment)).convert("RGB")
 
-            positive = Image.open(
-                os.path.join(self.root, DIRECTORY_MAP[label], "cropped_images", model)
-            ).convert("RGB")
+            positive = Image.open(os.path.join(self.root, DIRECTORY_MAP[label], "cropped_images", model)).convert("RGB")
 
         # TODO: Hard negative mining
         # Randomly sample a negative (ensuring it is not the same as the anchor)
         while (negative_index := random.randrange(0, len(self.data))) == index:
             pass
 
-        negative_model, negative_garment, negative_label = self.data.iloc[
-            negative_index
-        ]
+        negative_model, negative_garment, negative_label = self.data.iloc[negative_index]
 
         # Load the negative image (random choice between model and garment)
         if random.choice([True, False]):
-            negative = Image.open(
-                os.path.join(
-                    self.root,
-                    DIRECTORY_MAP[negative_label],
-                    "cropped_images",
-                    negative_garment,
-                )
-            ).convert("RGB")
+            negative = Image.open(os.path.join(self.root, DIRECTORY_MAP[negative_label], "cropped_images", negative_garment,)).convert("RGB")
         else:
-            negative = Image.open(
-                os.path.join(
-                    self.root,
-                    DIRECTORY_MAP[negative_label],
-                    "cropped_images",
-                    negative_model,
-                )
-            ).convert("RGB")
+            negative = Image.open(os.path.join(self.root, DIRECTORY_MAP[negative_label], "cropped_images", negative_model)).convert("RGB")
 
         anchor = self.transformations(anchor)
         positive = self.transformations(positive)
         negative = self.transformations(negative)
 
         return anchor, positive, negative
+class EncoderLoss(nn.Module):
+    def __init__(self, expander: nn.Module, triplet_weight: float = 1.0, vicreg_weight: float = 1.0, margin: float = 1.0) -> None:
+        super().__init__()
+
+        self.expander = expander
+        self.triplet_weight = triplet_weight
+        self.vicreg_weight = vicreg_weight
+
+        self.triplet_loss = nn.TripletMarginWithDistanceLoss(
+            distance_function=lambda x, y: 1 - torch.cosine_similarity(x, y),
+            margin=margin,
+        )
+        
+        self.vicreg_loss = VICRegLoss()
+
+    def forward(
+        self, anchor: Tensor, positive: Tensor, negative: Tensor
+    ) -> Dict[str, Tensor]:
+        """
+        Calculate the contrastive loss between the anchor, positive and negative samples. 
+        Incorporates VICReg loss to prevent information collapse and encourage diversity in the embeddings.
+
+        Returns a dictionary containing the triplet loss and VICReg loss.
+        """
+
+        # Calculate the triplet loss
+        triplet_loss = self.triplet_loss(anchor, positive, negative)
+
+        # Calculate the VICReg loss
+        vicreg_loss = self.vicreg_loss(self.expander(anchor), self.expander(positive))
+
+        # Calculate the overall loss
+        overall_loss = self.triplet_weight * triplet_loss + self.vicreg_weight * vicreg_loss
+
+        return {"Overall Loss": overall_loss, "Triplet Loss": triplet_loss, "VICReg Loss": vicreg_loss}
+class VICRegLoss(nn.Module):
+    """
+    Computes the VICReg loss proposed in https://arxiv.org/abs/2105.04906.
+    Implementation adapted from https://github.com/jolibrain/vicreg-loss/.
+    """
+    def __init__(
+        self,
+        var_coeff: float = 0.8,
+        inv_coeff: float = 1e-5,
+        cov_coeff: float = 0.8,
+        gamma: float = 1.0,
+    ):
+        super().__init__()
+
+        self.inv_coeff = inv_coeff
+        self.var_coeff = var_coeff
+        self.cov_coeff = cov_coeff
+        self.gamma = gamma
+
+    # TODO: Look at incorporating the negative sample into VICReg
+    def forward(self, x: Tensor, y: Tensor) -> Dict[str, Tensor]:
+        """
+        Calculate the VICReg loss.
+        """
+
+        variance_loss = (self.variance_loss(x, self.gamma) + self.variance_loss(y, self.gamma)) / 2
+
+        invariance_loss = self.invariance_loss(x, y)
+
+        covariance_loss = (self.covariance_loss(x) + self.covariance_loss(y)) / 2
+
+        return self.var_coeff * variance_loss + self.inv_coeff * invariance_loss + self.cov_coeff * covariance_loss
+
+    @staticmethod
+    def invariance_loss(x: Tensor, y: Tensor) -> Tensor:
+        """
+        Computes the invariance loss. Force the representations of the same object to be similar.
+        """
+        return F.mse_loss(x, y)
+
+    @staticmethod
+    def variance_loss(x: Tensor, gamma: float) -> Tensor:
+        """
+        Computes the variance loss. Push the representations across the batch to have high variance.
+        """
+        x = x - x.mean(dim=0)
+        std = x.std(dim=0)
+        var_loss = F.relu(gamma - std).mean()
+        return var_loss
+
+    @staticmethod
+    def covariance_loss(x: Tensor) -> Tensor:
+        """
+        Computes the covariance loss. Decorrelate the embeddings' dimensions, pushing the model to capture more information per dimension.
+        """
+        x = x - x.mean(dim=0)
+        cov = (x.T @ x) / (x.shape[0] - 1)
+        cov_loss = cov.fill_diagonal_(0.0).pow(2).sum() / x.shape[1]
+        return cov_loss
 
 
 def evaluate(
@@ -105,14 +178,14 @@ def evaluate(
     loss_fcn: nn.Module,
     epoch: int,
     device: str = "cpu",
-) -> dict[str:float]:
+) -> Dict[str, float]:
     """
     Evaluate the encoder network on the test set.
     """
 
     encoder.eval()
 
-    validation_loss = 0.0
+    validation_losses = {}
     euclidean_distance_ap = 0.0
     euclidean_distance_an = 0.0
     similarity_ap = 0.0
@@ -132,10 +205,10 @@ def evaluate(
             anchor_features = encoder(anchor)
             positive_features = encoder(positive)
             negative_features = encoder(negative)
+            
+            batch_losses: Dict[str, Tensor] = loss_fcn(anchor_features, positive_features, negative_features)
 
-            validation_loss += loss_fcn(
-                anchor_features, positive_features, negative_features
-            )
+            validation_losses = {k: validation_losses.get(k, 0) + v for k, v in batch_losses.items()}
 
             euclidean_distance_ap += torch.norm(
                 anchor_features - positive_features, dim=1
@@ -152,10 +225,12 @@ def evaluate(
                 anchor_features, negative_features
             ).mean()
 
+    validation_losses = {k: v / len(test_data) for k, v in validation_losses.items()}
+
     return {
-        "Val/Triplet Loss": validation_loss / len(test_data),
-        "Val/Euclidean Distance Ratio": euclidean_distance_an / euclidean_distance_ap,
-        "Val/Cosine Similarity Ratio": similarity_ap / similarity_an,
+        **validation_losses,
+        "Euclidean Distance Ratio": euclidean_distance_an / euclidean_distance_ap,
+        "Cosine Similarity Ratio": similarity_ap / similarity_an,
     }
 
 
@@ -190,24 +265,23 @@ def train_one_epoch(
         positive_features = encoder(positive)
         negative_features = encoder(negative)
 
-        batch_loss: torch.Tensor = loss_fcn(
-            anchor_features, positive_features, negative_features
-        )
+        batch_losses: Dict[str, Tensor] = loss_fcn(anchor_features, positive_features, negative_features)
 
         # Log loss to tensorboard
         logger.log(
-            {
-                "Train/Triplet Loss": batch_loss,
-                "Train/Learning Rate": optimizer.param_groups[-1]["lr"],
-            }
+            {"Train": {**batch_losses, "Learning Rate": optimizer.param_groups[-1]["lr"]}},
+            step=epoch * len(train_data) * train_data.batch_size + i * train_data.batch_size,
         )
 
+        batch_loss = batch_losses["Overall Loss"]
+        
         batch_loss.backward()
         optimizer.step()
 
 
 def train(
     encoder: nn.Module,
+    expander: nn.Module,
     train_data: DataLoader,
     test_data: DataLoader,
     loss_fcn: nn.Module,
@@ -221,7 +295,7 @@ def train(
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, model_name), exist_ok=True)
 
-    optimizer = optim.Adam(encoder.parameters(), lr=1e-3, weight_decay=1e-4)
+    optimizer = optim.Adam(list(encoder.parameters()) + list(expander.parameters()), lr=1e-3, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
 
     logger = wandb.init(dir=log_dir, project="fashion-atlas", name=model_name)
@@ -237,6 +311,7 @@ def train(
             epoch=epoch,
             device=device,
         )
+
         metrics = evaluate(
             encoder=encoder,
             test_data=test_data,
@@ -245,17 +320,14 @@ def train(
             device=device,
         )
 
-        metrics_str = ", ".join(f"{k}: {v}" for k, v in metrics.items())
+        metrics_str = " ".join(f"{k}: {v:.2f}" for k, v in metrics.items())
         print(f"Epoch {epoch + 1} {metrics_str}")
 
-        logger.log(metrics)
+        logger.log({"Val": metrics}, step=logger.step)
 
         scheduler.step()
 
-        torch.save(
-            encoder.state_dict(),
-            f"{os.path.join(output_dir, model_name)}/checkpoint-{epoch + 1}.pt",
-        )
+        torch.save(encoder.state_dict(), f"{os.path.join(output_dir, model_name)}/checkpoint-{epoch + 1}.pt")
 
     logger.finish()
 
@@ -268,42 +340,47 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load the model
-    encoder = models.resnet50()
+    encoder = models.resnet50(weights="DEFAULT")
 
     encoder = encoder.to(device)
 
+    expander = nn.Sequential(
+            nn.Linear(1000, 8192),
+            nn.BatchNorm1d(8192),
+            nn.ReLU(True),
+            nn.Linear(8192, 8192),
+            nn.BatchNorm1d(8192),
+            nn.ReLU(True),
+            nn.Linear(8192, 8192),
+    ).to(device)
+
+
     # Load the data
     transformations = transforms.Compose(
-        [transforms.Resize((256, 192)), transforms.ToTensor()]
+        [
+            transforms.Resize((256, 192)), 
+            transforms.ToTensor(), 
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ]
     )
 
-    train_data = DressCodeDataset(
-        root=DRESSCODE_ROOT,
-        pairs="train_pairs_cropped.txt",
-        transformations=transformations,
-    )
+    train_data = DressCodeDataset(root=DRESSCODE_ROOT, pairs="train_pairs_cropped.txt", transformations=transformations)
 
-    test_data = DressCodeDataset(
-        root=DRESSCODE_ROOT,
-        pairs="test_pairs_paired_cropped.txt",
-        transformations=transformations,
-    )
+    test_data = DressCodeDataset(root=DRESSCODE_ROOT, pairs="test_pairs_paired_cropped.txt", transformations=transformations)
 
     train_loader = DataLoader(train_data, batch_size=50, shuffle=True)
 
     test_loader = DataLoader(test_data, batch_size=50, shuffle=False)
 
-    loss_fcn = nn.TripletMarginWithDistanceLoss(
-        distance_function=lambda x, y: 1 - torch.cosine_similarity(x, y),
-        margin=1.5,
-    )
+    loss_fcn = EncoderLoss(expander, triplet_weight=2.0, vicreg_weight=0.5, margin=1.5)
 
     train(
         encoder=encoder,
+        expander=expander,
         train_data=train_loader,
         test_data=test_loader,
         loss_fcn=loss_fcn,
-        epochs=6,
+        epochs=10,
         device=device,
-        model_name="ResNet50 Cosine Similarity M=1.5",
+        model_name="ResNet50",
     )
