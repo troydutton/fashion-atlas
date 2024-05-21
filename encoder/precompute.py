@@ -1,12 +1,13 @@
 import os
+from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as transforms
 from PIL import Image
+from torch import Tensor, nn
 from tqdm import tqdm
 
 # Root directory for the dataset
@@ -16,19 +17,22 @@ DRESSCODE_ROOT = "data/DressCode/"
 DIRECTORY_MAP = ["upper_body", "lower_body", "dresses"]
 
 def precompute_dataset_features(
-    encoder: nn.Module, data: pd.DataFrame, transformations: transforms.Compose
-) -> tuple[dict[str, torch.Tensor], dict[str, np.ndarray]]:
+        encoder: nn.Module, 
+        data: pd.DataFrame, 
+        transformations: transforms.Compose, 
+        device = torch.device
+    ) -> Tuple[Dict[str, Tensor], Dict[str, np.ndarray]]:
+    """
+    Calculates the features for the entire dataset.
+
+    Returns a dictionary of features and indices for each garment type.
+    """
     features = {"upper_body": [], "lower_body": [], "dresses": []}
     feature_indices = {"upper_body": [], "lower_body": [], "dresses": []}
 
     encoder.eval()
 
-    for i, (_, garment, label) in tqdm(
-        enumerate(data.values),
-        desc="Calculating Features",
-        total=len(data),
-        unit="image",   
-    ):
+    for i, (_, garment, label) in tqdm(enumerate(data.values),desc="Calculating Features", total=len(data),unit="image",   ):
         # Load in the garment image
         garment_image = Image.open(
             os.path.join(
@@ -63,27 +67,24 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Read in the dataset
-    data = pd.read_csv(
-        os.path.join(DRESSCODE_ROOT, "train_pairs_cropped.txt"),
-        delimiter="\t",
-        header=None,
-        names=["model", "garment", "label"],
-    )
+    data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "train_pairs_cropped.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
 
     # Load in the encoder network
-    encoder = models.resnet50()
+    encoder = models.convnext_tiny()
 
-    encoder.load_state_dict(
-        torch.load("models\ResNet50 Cosine Similarity Margin=1\checkpoint-3.pt")
-    )
+    encoder.load_state_dict(torch.load("models/ConvNeXt-T/checkpoint-1.pt"))
 
     encoder = encoder.to(device)
 
     transformations = transforms.Compose(
-        [transforms.Resize((256, 192)), transforms.ToTensor()]
+        [
+            transforms.ToTensor(), 
+            transforms.Resize((256, 192)), 
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ]
     )
 
-    features, feature_indices = precompute_dataset_features(encoder=encoder, data=data, transformations=transformations)
+    features, feature_indices = precompute_dataset_features(encoder=encoder, data=data, transformations=transformations, device=device)
 
     torch.save(features, os.path.join(DRESSCODE_ROOT, "train_features.pt"))
     torch.save(feature_indices, os.path.join(DRESSCODE_ROOT, "train_feature_indices.pt"))
