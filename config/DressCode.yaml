@@ -1,0 +1,20 @@
+model:
+  embedding_dim: 1000
+  expander_dim: 4000
+
+train:
+  epochs: 20
+  batch_size: 42
+  run_name: 'ConvNeXt-T M=1.9'
+
+optimizer:
+  lr: 0.001
+  weight_decay: 0.0001
+
+loss:
+  margin: 1.9
+  triplet_weight: 5.0
+  vicreg_weight: 0.5
+  var_coeff: 25.0
+  inv_coeff: 10.0
+  cov_coeff: 1.0

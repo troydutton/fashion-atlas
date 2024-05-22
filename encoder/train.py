@@ -10,17 +10,20 @@ import torch.optim as optim
 import torchvision.models as models
 import torchvision.transforms.v2 as transforms
 import wandb
+import yaml
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from wandb.wandb_run import Run
 
-# Root directory for the dataset
 DRESSCODE_ROOT = "data/DressCode/"
 
-# Map labels to their corresponding directories
 DIRECTORY_MAP = ["upper_body", "lower_body", "dresses"]
+
+IMAGE_SIZE = (256, 192)
+IMNET_MEAN = [0.485, 0.456, 0.406]
+IMNET_STD = [0.229, 0.224, 0.225]
 
 
 class DressCodeDataset(Dataset):
@@ -75,7 +78,14 @@ class DressCodeDataset(Dataset):
 
         return anchor, positive, negative
 class EncoderLoss(nn.Module):
-    def __init__(self, expander: nn.Module, triplet_weight: float = 1.0, vicreg_weight: float = 1.0, margin: float = 1.0) -> None:
+    def __init__(self, 
+                 expander: nn.Module, 
+                 triplet_weight: float = 1.0, 
+                 vicreg_weight: float = 1.0, 
+                 var_coeff: float = 1.0, 
+                 inv_coeff: float = 1.0, 
+                 cov_coeff: float=1e-5, 
+                 margin: float = 1.0) -> None:
         super().__init__()
 
         self.expander = expander
@@ -87,7 +97,7 @@ class EncoderLoss(nn.Module):
             margin=margin,
         )
         
-        self.vicreg_loss = VICRegLoss()
+        self.vicreg_loss = VICRegLoss(var_coeff, inv_coeff, cov_coeff)
 
     def forward(self, anchor: Tensor, positive: Tensor, negative: Tensor) -> Dict[str, Tensor]:
         """
@@ -167,11 +177,37 @@ class VICRegLoss(nn.Module):
         cov_loss = cov.fill_diagonal_(0.0).pow(2).sum() / x.shape[1]
         return cov_loss
 
+def parse_config(path: str) -> Dict:
+    """
+    Reads a yaml file and returns a dictionary with the configuration parameters.
+    """
+    with open(path, 'r') as file:
+        config = yaml.safe_load(file)
+
+    return config
+
+def build_model(embedding_dim: int, expander_dim: int, device: torch.device) -> Tuple[nn.Module, nn.Module]:
+    """
+    Build the encoder and expander networks.
+    """
+    encoder = models.convnext_tiny(weights="DEFAULT", num_classes=embedding_dim).to(device)
+
+    expander = nn.Sequential(
+        nn.Linear(embedding_dim, expander_dim),
+        nn.BatchNorm1d(expander_dim),
+        nn.ReLU(True),
+        nn.Linear(expander_dim, expander_dim),
+        nn.BatchNorm1d(expander_dim),
+        nn.ReLU(True),
+        nn.Linear(expander_dim, expander_dim),
+    ).to(device)
+
+    return encoder, expander
 
 def evaluate(
     encoder: nn.Module,
-    test_data: DataLoader,
     loss_fcn: nn.Module,
+    test_loader: DataLoader,
     epoch: int,
     device: str = "cpu",
 ) -> Dict[str, float]:
@@ -188,7 +224,7 @@ def evaluate(
     similarity_an = 0.0
 
     with torch.no_grad():
-        for i, (anchor, positive, negative) in tqdm(enumerate(test_data), f"Evaluation {epoch + 1}", unit="batch", total=len(test_data)):
+        for i, (anchor, positive, negative) in tqdm(enumerate(test_loader), f"Evaluation {epoch + 1}", unit="batch", total=len(test_loader)):
             anchor = anchor.to(device)
             positive = positive.to(device)
             negative = negative.to(device)
@@ -216,20 +252,19 @@ def evaluate(
                 anchor_features, negative_features
             ).mean()
 
-    validation_losses = {k: v / len(test_data) for k, v in validation_losses.items()}
+    validation_losses = {k: v / len(test_loader) for k, v in validation_losses.items()}
 
     return {
         **validation_losses,
-        "Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(test_data),
-        "Cosine Similarity Difference": (similarity_ap - similarity_an) / len(test_data),
+        "Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(test_loader),
+        "Cosine Similarity Difference": (similarity_ap - similarity_an) / len(test_loader),
     }
-
 
 def train_one_epoch(
     encoder: nn.Module,
-    train_data: DataLoader,
-    loss_fcn: nn.Module,
     optimizer: optim.Optimizer,
+    loss_fcn: nn.Module,
+    train_loader: DataLoader,
     logger: Run,
     epoch: int,
     device: str = "cpu",
@@ -241,10 +276,10 @@ def train_one_epoch(
     encoder.train()
 
     for i, (anchor, positive, negative) in tqdm(
-        enumerate(train_data),
+        enumerate(train_loader),
         f"Training {epoch + 1}",
         unit="batch",
-        total=len(train_data),
+        total=len(train_loader),
     ):
         optimizer.zero_grad()
 
@@ -261,7 +296,7 @@ def train_one_epoch(
         # Log loss to tensorboard
         logger.log(
             {"Train": {**batch_losses, "Learning Rate": optimizer.param_groups[-1]["lr"]}},
-            step=epoch * len(train_data) * train_data.batch_size + i * train_data.batch_size,
+            step=epoch * len(train_loader) * train_loader.batch_size + i * train_loader.batch_size,
         )
 
         batch_loss = batch_losses["Overall Loss"]
@@ -272,32 +307,32 @@ def train_one_epoch(
 
 def train(
     encoder: nn.Module,
-    expander: nn.Module,
-    train_data: DataLoader,
-    test_data: DataLoader,
+    optimizer: optim.Optimizer,
+    scheduler: optim.lr_scheduler._LRScheduler,
+    train_data: Dataset,
+    test_data: Dataset,
     loss_fcn: nn.Module,
+    logger: Run,
     epochs: int = 10,
+    batch_size: int = 42,
     device: str = "cpu",
-    log_dir: str = "./logs",
     output_dir: str = "./models",
-    model_name: str = "ConvNeXt-T",
+    run_name: str = "ConvNeXt-T",
 ):
-    os.makedirs(log_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
-    os.makedirs(os.path.join(output_dir, model_name), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, run_name), exist_ok=True)
 
-    optimizer = optim.AdamW(list(encoder.parameters()) + list(expander.parameters()), lr=1e-3, weight_decay=1e-4)
-    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, last_epoch=epochs - 1)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
-    logger = wandb.init(dir=log_dir, project="fashion-atlas", name=model_name)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
     for epoch in range(epochs):
 
         train_one_epoch(
             encoder=encoder,
-            train_data=train_data,
-            loss_fcn=loss_fcn,
             optimizer=optimizer,
+            loss_fcn=loss_fcn,
+            train_loader=train_loader,
             logger=logger,
             epoch=epoch,
             device=device,
@@ -305,8 +340,8 @@ def train(
 
         metrics = evaluate(
             encoder=encoder,
-            test_data=test_data,
             loss_fcn=loss_fcn,
+            test_loader=test_loader,
             epoch=epoch,
             device=device,
         )
@@ -318,44 +353,33 @@ def train(
 
         scheduler.step()
 
-        torch.save(encoder.state_dict(), f"{os.path.join(output_dir, model_name)}/checkpoint-{epoch + 1}.pt")
+        torch.save(encoder.state_dict(), f"{os.path.join(output_dir, run_name)}/checkpoint-{epoch + 1}.pt")
 
     logger.finish()
 
 
 if __name__ == "__main__":
-    # Set the seed
     torch.manual_seed(42)
 
-    # Set the device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Load the model
-    encoder = models.convnext_tiny(weights="DEFAULT")
+    args = parse_config("config/DressCode.yaml")
 
-    encoder = encoder.to(device)
+    encoder, expander = build_model(**args["model"], device=device)
 
-    expander = nn.Sequential(
-            nn.Linear(1000, 4000),
-            nn.BatchNorm1d(4000),
-            nn.ReLU(True),
-            nn.Linear(4000, 4000),
-            nn.BatchNorm1d(4000),
-            nn.ReLU(True),
-            nn.Linear(4000, 4000),
-    ).to(device)
-
+    optimizer = optim.AdamW(list(encoder.parameters()) + list(expander.parameters()), **args["optimizer"])
+    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10)
 
     # Load the data
     train_transformations = transforms.Compose(
         [
             transforms.ToImage(),
             transforms.ToDtype(torch.float32, scale=True),
-            transforms.Resize((256, 192)), 
+            transforms.Resize(IMAGE_SIZE), 
             transforms.RandomHorizontalFlip(),
             transforms.RandomApply([transforms.RandomPerspective(interpolation=transforms.InterpolationMode.NEAREST, fill=(0.9536, 0.9470, 0.9417))]),
             transforms.RandomApply([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 1.0))]),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            transforms.Normalize(IMNET_MEAN, IMNET_STD),
         ]
     )
 
@@ -363,8 +387,8 @@ if __name__ == "__main__":
         [
             transforms.ToImage(),
             transforms.ToDtype(torch.float32, scale=True),
-            transforms.Resize((256, 192)), 
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            transforms.Resize(IMAGE_SIZE), 
+            transforms.Normalize(IMNET_MEAN, IMNET_STD),
         ]
     )
 
@@ -372,19 +396,20 @@ if __name__ == "__main__":
 
     test_data = DressCodeDataset(root=DRESSCODE_ROOT, pairs="test_pairs_paired_cropped.txt", transformations=test_transformations)
 
-    train_loader = DataLoader(train_data, batch_size=42, shuffle=True)
+    loss_fcn = EncoderLoss(expander, **args["loss"])
 
-    test_loader = DataLoader(test_data, batch_size=42, shuffle=False)
+    os.makedirs("./logs", exist_ok=True)
 
-    loss_fcn = EncoderLoss(expander, triplet_weight=5.0, vicreg_weight=0.5, margin=1.5)
+    logger = wandb.init(dir="./logs", project="fashion-atlas", name=args["train"]["run_name"], config=args)
 
     train(
         encoder=encoder,
-        expander=expander,
-        train_data=train_loader,
-        test_data=test_loader,
+        optimizer=optimizer,
+        scheduler=scheduler,
         loss_fcn=loss_fcn,
-        epochs=10,  
+        train_data=train_data,
+        test_data=test_data,
+        logger=logger,
         device=device,
-        model_name="ConvNeXt-T",
+        **args["train"],
     )
