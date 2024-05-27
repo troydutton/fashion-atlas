@@ -4,11 +4,11 @@ from typing import Dict, Tuple
 import numpy as np
 import pandas as pd
 import torch
-import torchvision.models as models
 import torchvision.transforms as transforms
 from PIL import Image
 from torch import Tensor, nn
 from tqdm import tqdm
+from utils import build_model, get_transforms, set_random_seed
 
 # Root directory for the dataset
 DRESSCODE_ROOT = "data/DressCode/"
@@ -32,13 +32,9 @@ def precompute_dataset_features(
 
     encoder.eval()
 
-    for i, (_, garment, label) in tqdm(enumerate(data.values),desc="Calculating Features", total=len(data),unit="image",   ):
+    for i, (_, garment, label) in tqdm(enumerate(data.values), desc="Calculating Features", total=len(data), unit="image"):
         # Load in the garment image
-        garment_image = Image.open(
-            os.path.join(
-                DRESSCODE_ROOT, DIRECTORY_MAP[label], "cropped_images", garment
-            )
-        ).convert("RGB")
+        garment_image = Image.open(os.path.join(DRESSCODE_ROOT, DIRECTORY_MAP[label], "cropped_images", garment)).convert("RGB")
 
         # Apply the transformations
         garment_image = transformations(garment_image)
@@ -62,7 +58,7 @@ def precompute_dataset_features(
     return features, feature_indices
 
 if __name__ == "__main__":
-    torch.manual_seed(42)
+    set_random_seed(42)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -70,19 +66,11 @@ if __name__ == "__main__":
     data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "train_pairs_cropped.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
 
     # Load in the encoder network
-    encoder = models.convnext_tiny()
+    encoder, _ = build_model(embedding_dim=1000, expander_dim=4000, device=device)
 
-    encoder.load_state_dict(torch.load("models/ConvNeXt-T/checkpoint-1.pt"))
+    encoder.load_state_dict(torch.load("models/ConvNeXt-T Color Jitter/checkpoint-20.pt"))
 
-    encoder = encoder.to(device)
-
-    transformations = transforms.Compose(
-        [
-            transforms.ToTensor(), 
-            transforms.Resize((256, 192)), 
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ]
-    )
+    _, transformations = get_transforms()
 
     features, feature_indices = precompute_dataset_features(encoder=encoder, data=data, transformations=transformations, device=device)
 
