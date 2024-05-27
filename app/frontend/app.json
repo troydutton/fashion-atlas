@@ -31,8 +31,7 @@
         "expo-camera",
         {
           "cameraPermission": "Allow Fashion Atlas to access your camera",
-          "microphonePermission": "Allow Fashion Atlas to access your microphone",
-          "recordAudioAndroid": true
+          "microphonePermission": "Allow Fashion Atlas to access your microphone"
         }
       ]
     ]
