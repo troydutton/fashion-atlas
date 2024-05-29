@@ -8,7 +8,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 from torch import Tensor, nn
 from tqdm import tqdm
-from utils import build_model, get_transforms, set_random_seed
+from utils import build_encoder, get_transforms, set_random_seed
 
 # Root directory for the dataset
 DRESSCODE_ROOT = "data/DressCode/"
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "train_pairs_cropped.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
 
     # Load in the encoder network
-    encoder, _ = build_model(embedding_dim=1000, expander_dim=4000, device=device)
+    encoder, _ = build_encoder(embedding_dim=1000, expander_dim=4000, device=device)
 
     encoder.load_state_dict(torch.load("models/ConvNeXt-T Color Jitter/checkpoint-20.pt"))
 

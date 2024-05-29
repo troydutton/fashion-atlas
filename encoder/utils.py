@@ -21,11 +21,13 @@ def parse_config(path: str) -> Dict:
 
     return config
 
-def build_model(embedding_dim: int, expander_dim: int, device: torch.device) -> Tuple[nn.Module, nn.Module]:
+def build_encoder(embedding_dim: int, expander_dim: int, device: torch.device) -> Tuple[nn.Module, nn.Module]:
     """
     Build the encoder and expander networks.
     """
-    encoder = models.convnext_base(weights="DEFAULT", num_classes=embedding_dim).to(device)
+    encoder = models.convnext_base(weights="DEFAULT").to(device)
+
+    encoder.classifier[2] = nn.Linear(encoder.classifier[2].in_features, embedding_dim).to(device)
 
     expander = nn.Sequential(
         nn.Linear(embedding_dim, expander_dim),

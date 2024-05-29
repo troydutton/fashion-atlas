@@ -14,7 +14,7 @@ from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from utils import build_model, get_transforms, parse_config, set_random_seed
+from utils import build_encoder, get_transforms, parse_config, set_random_seed
 from wandb.wandb_run import Run
 
 DRESSCODE_ROOT = "data/DressCode/"
@@ -330,9 +330,10 @@ if __name__ == "__main__":
 
     test_data = DressCodeDataset(root=DRESSCODE_ROOT, pairs="test_pairs_paired_cropped.txt", transformations=test_transformations)
     
-    # Load the model and optimizer
-    encoder, expander = build_model(**args["model"], device=device)
-
+    # Instantiate the model
+    encoder, expander = build_encoder(**args["model"], device=device)
+    
+    # Create the optimizer, scheduler and loss function
     optimizer = optim.AdamW(list(encoder.parameters()) + list(expander.parameters()), **args["optimizer"])
 
     scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10)
