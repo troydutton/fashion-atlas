@@ -8,6 +8,7 @@ dependencies:
   - pip
   - pytorch
   - torchvision
+  - torchmetrics
   - pytorch-cuda=11.8
   - ultralytics
   - numpy

@@ -6,26 +6,30 @@ import torch
 import torch.nn as nn
 import torchvision.transforms.v2 as transforms
 import yaml
+from torchmetrics.functional import pairwise_cosine_similarity
 from torchvision import models
 
 IMAGE_SIZE = (256, 192)
 IMNET_MEAN = [0.485, 0.456, 0.406]
 IMNET_STD = [0.229, 0.224, 0.225]
 
-def parse_config(path: str) -> Dict:
+def cosine_distance(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """
-    Reads a yaml file and returns a dictionary with the configuration parameters.
+    Compute the cosine distance between two tensors.
     """
-    with open(path, 'r') as file:
-        config = yaml.safe_load(file)
+    return 1 - torch.cosine_similarity(x, y)
 
-    return config
+def pairwise_cosine_distance(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """
+    Compute the pairwise cosine distance between two tensors.
+    """
+    return 1 - pairwise_cosine_similarity(x, y)
 
 def build_encoder(embedding_dim: int, expander_dim: int, device: torch.device) -> Tuple[nn.Module, nn.Module]:
     """
     Build the encoder and expander networks.
     """
-    encoder = models.convnext_base(weights="DEFAULT").to(device)
+    encoder = models.convnext_tiny(weights="DEFAULT").to(device)
 
     encoder.classifier[2] = nn.Linear(encoder.classifier[2].in_features, embedding_dim).to(device)
 
@@ -40,6 +44,15 @@ def build_encoder(embedding_dim: int, expander_dim: int, device: torch.device) -
     ).to(device)
 
     return encoder, expander
+
+def parse_config(path: str) -> Dict:
+    """
+    Reads a yaml file and returns a dictionary with the configuration parameters.
+    """
+    with open(path, 'r') as file:
+        config = yaml.safe_load(file)
+
+    return config
 
 def get_transforms() -> tuple[transforms.Compose, transforms.Compose]:
     """

@@ -1,7 +1,7 @@
 import os
 import random
 from datetime import datetime
-from typing import Dict, Tuple
+from typing import Callable, Dict, Tuple
 
 import pandas as pd
 import torch
@@ -14,7 +14,14 @@ from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from utils import build_encoder, get_transforms, parse_config, set_random_seed
+from utils import (
+    build_encoder,
+    cosine_distance,
+    get_transforms,
+    pairwise_cosine_distance,
+    parse_config,
+    set_random_seed,
+)
 from wandb.wandb_run import Run
 
 DRESSCODE_ROOT = "data/DressCode/"
@@ -87,10 +94,8 @@ class EncoderLoss(nn.Module):
         self.vicreg_weight = vicreg_weight
         self.expander = expander
 
-        self.triplet_loss = nn.TripletMarginWithDistanceLoss(
-            distance_function=lambda x, y: 1 - torch.cosine_similarity(x, y),
-            margin=margin,
-        )
+        # self.triplet_loss = nn.TripletMarginWithDistanceLoss(distance_function=cosine_distance, margin=margin)
+        self.triplet_loss = BatchHardTripletMarginLoss(margin=margin)
         
         self.vicreg_loss = VICRegLoss(var_coeff, inv_coeff, cov_coeff)
 
@@ -171,6 +176,29 @@ class VICRegLoss(nn.Module):
         cov = (x.T @ x) / (x.shape[0] - 1)
         cov_loss = cov.fill_diagonal_(0.0).pow(2).sum() / x.shape[1]
         return cov_loss
+
+class BatchHardTripletMarginLoss(nn.Module):
+    def __init__(self, distance_function: Callable = cosine_distance, pairwise_distance_function: Callable = pairwise_cosine_distance, margin: float = 1.0):
+        super().__init__()
+
+        self.distance_function = distance_function
+        self.pairwise_distance_function = pairwise_distance_function
+        self.margin = margin
+
+    def forward(self, anchor: Tensor, positive: Tensor, negative: Tensor) -> Tensor:
+        """
+        Calculate the triplet loss between the anchor, positive and negative samples.
+        Chooses the hardest negative samples for each anchor to form the triplets.
+        """
+
+        # NOTE: Explore the impact of using a different distance function to select the hard negatives.
+        distance_ap = self.distance_function(anchor, positive)
+        distance_an: Tensor = self.pairwise_distance_function(anchor, negative)
+        distance_an = distance_an.min(-1).values
+
+        loss = F.relu(distance_ap - distance_an + self.margin).mean()
+
+        return loss
 
 def evaluate(
     encoder: nn.Module,
