@@ -63,16 +63,20 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Read in the dataset
-    data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "train_pairs_cropped.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
+    train_data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "train_pairs_cropped.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
+
+    test_data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "test_pairs_paired_cropped.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
+
+    data = pd.concat([train_data, test_data])
 
     # Load in the encoder network
-    encoder, _ = build_encoder(embedding_dim=1000, expander_dim=4000, device=device)
+    encoder, _ = build_encoder(embedding_dim=1024, expander_dim=4096, device=device)
 
-    encoder.load_state_dict(torch.load("models/ConvNeXt-T Color Jitter/checkpoint-20.pt"))
+    encoder.load_state_dict(torch.load("models/ConvNeXt-T Semi-Hard 2024-05-31-01-55-38/checkpoint-20.pt"))
 
     _, transformations = get_transforms()
 
     features, feature_indices = precompute_dataset_features(encoder=encoder, data=data, transformations=transformations, device=device)
 
-    torch.save(features, os.path.join(DRESSCODE_ROOT, "train_features.pt"))
-    torch.save(feature_indices, os.path.join(DRESSCODE_ROOT, "train_feature_indices.pt"))
+    torch.save(features, os.path.join(DRESSCODE_ROOT, "features.pt"))
+    torch.save(feature_indices, os.path.join(DRESSCODE_ROOT, "feature_indices.pt"))

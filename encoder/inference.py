@@ -17,18 +17,22 @@ args = parse_config("config/DressCode.yaml")
 # Load the model
 encoder, expander = build_encoder(**args["model"], device=device)
 
-encoder.load_state_dict(torch.load("models/ConvNeXt-B 2024-05-27-21-18-57/checkpoint-2.pt", map_location=device))
+encoder.load_state_dict(torch.load("models/ConvNeXt-T Semi-Hard 2024-05-31-01-55-38/checkpoint-20.pt", map_location=device))
 
 encoder.eval()
 
 _, transformations = get_transforms()
 
 # Read in the dataset
-pairs = pd.read_csv(os.path.join(DRESSCODE_ROOT, "train_pairs_cropped.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
+train_data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "train_pairs_cropped.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
+
+test_data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "test_pairs_paired_cropped.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
+
+data = pd.concat([train_data, test_data])
 
 # Load the features
-features = torch.load(os.path.join(DRESSCODE_ROOT, "train_features.pt"))
-feature_indices = torch.load(os.path.join(DRESSCODE_ROOT, "train_feature_indices.pt"))
+features = torch.load(os.path.join(DRESSCODE_ROOT, "features.pt"))
+feature_indices = torch.load(os.path.join(DRESSCODE_ROOT, "feature_indices.pt"))
 
 def get_similar_images(image: Image, label: int, n: int = 4) -> list[Image.Image]:
     """
@@ -51,6 +55,6 @@ def get_similar_images(image: Image, label: int, n: int = 4) -> list[Image.Image
 
         similar_image_indices = class_feature_indices[similar_image_indices]
 
-        similar_images = [Image.open(os.path.join(DRESSCODE_ROOT, LABEL_TO_GARMENT_TYPE[label], "cropped_images", pairs.iloc[idx]["garment"])) for idx in similar_image_indices]
+        similar_images = [Image.open(os.path.join(DRESSCODE_ROOT, LABEL_TO_GARMENT_TYPE[label], "cropped_images", data.iloc[idx]["garment"])) for idx in similar_image_indices]
 
     return similar_images
