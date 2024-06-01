@@ -9,20 +9,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision.transforms.v2 as transforms
-import wandb
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from utils import (
-    build_encoder,
-    cosine_distance,
-    get_transforms,
-    pairwise_cosine_distance,
-    parse_config,
-    set_random_seed,
-)
+from utils import build_encoder, cosine_distance, get_transforms, pairwise_cosine_distance, parse_config, set_random_seed
 from wandb.wandb_run import Run
+
+import wandb
 
 DRESSCODE_ROOT = "data/DressCode/"
 
@@ -32,10 +26,8 @@ class DressCodeDataset(Dataset):
     def __init__(self, root: str, pairs: str, transformations: transforms.Compose) -> None:
         super().__init__()
 
-        # Root directory of the dataset
         self.root = root
 
-        # Model-garment pairs
         self.data = pd.read_csv(os.path.join(self.root, pairs), delimiter="\t", header=None, names=["model", "garment", "label"])
 
         self.transformations = transformations
@@ -86,7 +78,8 @@ class EncoderLoss(nn.Module):
             var_coeff: float = 1.0, 
             inv_coeff: float = 1.0, 
             cov_coeff: float=1e-5, 
-            margin: float = 1.0
+            margin: float = 1.0,
+            temperature: float = 1.0
         ) -> None:
         super().__init__()
 
@@ -95,7 +88,8 @@ class EncoderLoss(nn.Module):
         self.expander = expander
 
         # self.triplet_loss = nn.TripletMarginWithDistanceLoss(distance_function=cosine_distance, margin=margin)
-        self.triplet_loss = BatchHardTripletMarginLoss(margin=margin)
+        # self.triplet_loss = BatchHardTripletMarginLoss(margin=margin, temperature=temperature)
+        self.triplet_loss = BatchAllTripletMarginLoss(margin=margin)
         
         self.vicreg_loss = VICRegLoss(var_coeff, inv_coeff, cov_coeff)
 
@@ -104,7 +98,7 @@ class EncoderLoss(nn.Module):
         Calculate the contrastive loss between the anchor, positive and negative samples. 
         Incorporates VICReg loss to prevent information collapse and encourage diversity in the embeddings.
 
-        Returns a dictionary containing the triplet loss and VICReg loss.
+        Returns a dictionary containing the weighted overall loss and unweighted sublosses.
         """
 
         # Calculate the triplet loss
@@ -176,30 +170,69 @@ class VICRegLoss(nn.Module):
         cov = (x.T @ x) / (x.shape[0] - 1)
         cov_loss = cov.fill_diagonal_(0.0).pow(2).sum() / x.shape[1]
         return cov_loss
-
 class BatchHardTripletMarginLoss(nn.Module):
-    def __init__(self, distance_function: Callable = cosine_distance, pairwise_distance_function: Callable = pairwise_cosine_distance, margin: float = 1.0):
+    def __init__(
+            self,
+            distance_function: Callable[[Tensor, Tensor], Tensor] = cosine_distance, 
+            pairwise_distance_function: Callable[[Tensor, Tensor], Tensor] = pairwise_cosine_distance, 
+            margin: float = 1.0,
+            temperature: float = 1.0
+        ) -> None:
         super().__init__()
 
+        # NOTE: Could experiment with decaying temperature.
+
+        self.distance_function = distance_function
+        self.pairwise_distance_function = pairwise_distance_function
+        self.temperature = temperature
+        self.margin = margin
+
+    def forward(self, anchor: Tensor, positive: Tensor, negative: Tensor) -> Tensor:
+        """
+        Calculate the triplet margin loss between the anchor, positive and negative samples.
+        Choose negatives based on the distance between the anchor and the negative
+        samples, giving preference to closer (harder) negatives.
+        When the temperature is set to 0, the closest negative is always chosen.
+        """
+
+        distance_ap = self.distance_function(anchor, positive)
+        distance_an: Tensor = self.pairwise_distance_function(anchor, negative)
+
+        distribution_an = (-distance_an / self.temperature).softmax(-1)
+        indices_an = torch.multinomial(distribution_an, 1).squeeze()
+        distance_an = distance_an[torch.arange(distance_an.shape[0]), indices_an]
+
+        loss = F.relu(distance_ap - distance_an + self.margin).mean()
+
+        return loss
+class BatchAllTripletMarginLoss(nn.Module):
+    def __init__(
+            self,
+            distance_function: Callable[[Tensor, Tensor], Tensor] = cosine_distance, 
+            pairwise_distance_function: Callable[[Tensor, Tensor], Tensor] = pairwise_cosine_distance, 
+            margin: float = 1.0,
+        ) -> None:
+        super().__init__()
+
+        # NOTE: Could experiment with decaying temperature.
         self.distance_function = distance_function
         self.pairwise_distance_function = pairwise_distance_function
         self.margin = margin
 
     def forward(self, anchor: Tensor, positive: Tensor, negative: Tensor) -> Tensor:
         """
-        Calculate the triplet loss between the anchor, positive and negative samples.
-        Chooses the hardest negative samples for each anchor to form the triplets.
+        Calculate the triplet margin loss between the anchor, positive and negative samples.
+        Calculates the loss for all possible anchor-negative pairs in the batch.
         """
 
-        # NOTE: Explore the impact of using a different distance function to select the hard negatives.
         distance_ap = self.distance_function(anchor, positive)
+        distance_ap = distance_ap.unsqueeze(1).repeat(1, distance_ap.shape[0])
         distance_an: Tensor = self.pairwise_distance_function(anchor, negative)
-        distance_an = distance_an.min(-1).values
 
         loss = F.relu(distance_ap - distance_an + self.margin).mean()
 
         return loss
-
+    
 def evaluate(
     encoder: nn.Module,
     loss_fcn: nn.Module,
@@ -220,7 +253,7 @@ def evaluate(
     similarity_an = 0.0
 
     with torch.no_grad():
-        for i, (anchor, positive, negative) in tqdm(enumerate(test_loader), f"Evaluation {epoch + 1}", unit="batch", total=len(test_loader)):
+        for _, (anchor, positive, negative) in tqdm(enumerate(test_loader), f"Evaluation {epoch + 1}", unit="batch", total=len(test_loader)):
             anchor = anchor.to(device)
             positive = positive.to(device)
             negative = negative.to(device)
@@ -262,6 +295,11 @@ def train_one_epoch(
 
     encoder.train()
 
+    euclidean_distance_ap = 0.0
+    euclidean_distance_an = 0.0
+    similarity_ap = 0.0
+    similarity_an = 0.0
+
     for i, (anchor, positive, negative) in tqdm(enumerate(train_loader), f"Training {epoch + 1}", unit="batch", total=len(train_loader)):
         optimizer.zero_grad()
 
@@ -275,6 +313,12 @@ def train_one_epoch(
 
         batch_losses: Dict[str, Tensor] = loss_fcn(anchor_features, positive_features, negative_features)
 
+        euclidean_distance_ap += torch.norm(anchor_features - positive_features, dim=1).mean()
+        euclidean_distance_an += torch.norm(anchor_features - negative_features, dim=1).mean()
+
+        similarity_ap += torch.cosine_similarity(anchor_features, positive_features).mean()
+        similarity_an += torch.cosine_similarity(anchor_features, negative_features).mean()
+
         # Log loss to tensorboard
         logger.log(
             {"Train": {**batch_losses, "Learning Rate": optimizer.param_groups[-1]["lr"]}},
@@ -285,6 +329,12 @@ def train_one_epoch(
         
         batch_loss.backward()
         optimizer.step()
+    
+    logger.log(
+        {"Train": {"Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(train_loader), 
+                   "Cosine Similarity Difference": (similarity_ap - similarity_an) / len(train_loader)}},
+        step=logger.step
+    )
 
 def train(
     encoder: nn.Module,
