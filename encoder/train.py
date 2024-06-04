@@ -1,3 +1,4 @@
+import math
 import os
 import random
 from datetime import datetime
@@ -88,8 +89,8 @@ class EncoderLoss(nn.Module):
         self.expander = expander
 
         # self.triplet_loss = nn.TripletMarginWithDistanceLoss(distance_function=cosine_distance, margin=margin)
-        # self.triplet_loss = BatchHardTripletMarginLoss(margin=margin, temperature=temperature)
-        self.triplet_loss = BatchAllTripletMarginLoss(margin=margin)
+        self.triplet_loss = BatchHardTripletMarginLoss(margin=margin, temperature=temperature)
+        # self.triplet_loss = BatchAllTripletMarginLoss(margin=margin)
         
         self.vicreg_loss = VICRegLoss(var_coeff, inv_coeff, cov_coeff)
 
@@ -198,8 +199,8 @@ class BatchHardTripletMarginLoss(nn.Module):
         distance_ap = self.distance_function(anchor, positive)
         distance_an: Tensor = self.pairwise_distance_function(anchor, negative)
 
-        distribution_an = (-distance_an / self.temperature).softmax(-1)
-        indices_an = torch.multinomial(distribution_an, 1).squeeze()
+        distribution_an = (-distance_an / self.temperature).softmax(dim=1)
+        indices_an = torch.multinomial(distribution_an, num_samples=1).squeeze()
         distance_an = distance_an[torch.arange(distance_an.shape[0]), indices_an]
 
         loss = F.relu(distance_ap - distance_an + self.margin).mean()
@@ -226,115 +227,40 @@ class BatchAllTripletMarginLoss(nn.Module):
         """
 
         distance_ap = self.distance_function(anchor, positive)
-        distance_ap = distance_ap.unsqueeze(1).repeat(1, distance_ap.shape[0])
+        distance_ap = distance_ap.unsqueeze(dim=1).repeat(1, distance_ap.shape[0])
         distance_an: Tensor = self.pairwise_distance_function(anchor, negative)
 
         loss = F.relu(distance_ap - distance_an + self.margin).mean()
 
         return loss
+class CosineAnnealingWarmup:
+    def __init__(self, optimizer: optim.Optimizer, warmup_steps: int, period: int, min_lr: float = 1e-6, max_lr: float = 1e-3) -> None:
+        self.optimizer = optimizer
+        self.warmup_steps = warmup_steps
+        self.max_steps = period
+        self.min_lr = min_lr
+        self.max_lr = max_lr 
+
+        self.current_step = 0
+
+        lr = self.get_lr()
+
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
     
-def evaluate(
-    encoder: nn.Module,
-    loss_fcn: nn.Module,
-    test_loader: DataLoader,
-    epoch: int,
-    device: str = "cpu",
-) -> Dict[str, float]:
-    """
-    Evaluate the encoder network on the test set.
-    """
+    def step(self) -> None:
+        lr = self.get_lr()
 
-    encoder.eval()
-
-    validation_losses = {}
-    euclidean_distance_ap = 0.0
-    euclidean_distance_an = 0.0
-    similarity_ap = 0.0
-    similarity_an = 0.0
-
-    with torch.no_grad():
-        for _, (anchor, positive, negative) in tqdm(enumerate(test_loader), f"Evaluation {epoch + 1}", unit="batch", total=len(test_loader)):
-            anchor = anchor.to(device)
-            positive = positive.to(device)
-            negative = negative.to(device)
-
-            anchor_features = encoder(anchor)
-            positive_features = encoder(positive)
-            negative_features = encoder(negative)
-            
-            batch_losses: Dict[str, Tensor] = loss_fcn(anchor_features, positive_features, negative_features)
-
-            validation_losses = {k: validation_losses.get(k, 0) + v for k, v in batch_losses.items()}
-
-            euclidean_distance_ap += torch.norm(anchor_features - positive_features, dim=1).mean()
-            euclidean_distance_an += torch.norm(anchor_features - negative_features, dim=1).mean()
-
-            similarity_ap += torch.cosine_similarity(anchor_features, positive_features).mean()
-            similarity_an += torch.cosine_similarity(anchor_features, negative_features).mean()
-
-    validation_losses = {k: v / len(test_loader) for k, v in validation_losses.items()}
-
-    return {
-        **validation_losses,
-        "Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(test_loader),
-        "Cosine Similarity Difference": (similarity_ap - similarity_an) / len(test_loader),
-    }
-
-def train_one_epoch(
-    encoder: nn.Module,
-    optimizer: optim.Optimizer,
-    loss_fcn: nn.Module,
-    train_loader: DataLoader,
-    logger: Run,
-    epoch: int,
-    device: str = "cpu",
-):
-    """
-    Train the encoder network for one epoch.
-    """
-
-    encoder.train()
-
-    euclidean_distance_ap = 0.0
-    euclidean_distance_an = 0.0
-    similarity_ap = 0.0
-    similarity_an = 0.0
-
-    for i, (anchor, positive, negative) in tqdm(enumerate(train_loader), f"Training {epoch + 1}", unit="batch", total=len(train_loader)):
-        optimizer.zero_grad()
-
-        anchor = anchor.to(device)
-        positive = positive.to(device)
-        negative = negative.to(device)
-
-        anchor_features = encoder(anchor)
-        positive_features = encoder(positive)
-        negative_features = encoder(negative)
-
-        batch_losses: Dict[str, Tensor] = loss_fcn(anchor_features, positive_features, negative_features)
-
-        euclidean_distance_ap += torch.norm(anchor_features - positive_features, dim=1).mean()
-        euclidean_distance_an += torch.norm(anchor_features - negative_features, dim=1).mean()
-
-        similarity_ap += torch.cosine_similarity(anchor_features, positive_features).mean()
-        similarity_an += torch.cosine_similarity(anchor_features, negative_features).mean()
-
-        # Log loss to tensorboard
-        logger.log(
-            {"Train": {**batch_losses, "Learning Rate": optimizer.param_groups[-1]["lr"]}},
-            step=epoch * len(train_loader) * train_loader.batch_size + i * train_loader.batch_size,
-        )
-
-        batch_loss = batch_losses["Overall Loss"]
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
         
-        batch_loss.backward()
-        optimizer.step()
-    
-    logger.log(
-        {"Train": {"Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(train_loader), 
-                   "Cosine Similarity Difference": (similarity_ap - similarity_an) / len(train_loader)}},
-        step=logger.step
-    )
+        self.current_step += 1
+
+    def get_lr(self) -> float:
+        if self.current_step < self.warmup_steps:
+            return self.min_lr + (self.max_lr - self.min_lr) * self.current_step / (self.warmup_steps - 1)
+        else:
+            return self.min_lr + 0.5 * (self.max_lr - self.min_lr) * (1 + math.cos(math.pi * (self.current_step - self.warmup_steps) / (self.max_steps)))
 
 def train(
     encoder: nn.Module,
@@ -393,6 +319,121 @@ def train(
 
     logger.finish()
 
+def train_one_epoch(
+    encoder: nn.Module,
+    optimizer: optim.Optimizer,
+    loss_fcn: nn.Module,
+    train_loader: DataLoader,
+    logger: Run,
+    epoch: int,
+    device: str = "cpu",
+):
+    """
+    Train the encoder network for one epoch.
+    """
+
+    encoder.train()
+
+    euclidean_distance_ap = 0.0
+    euclidean_distance_an = 0.0
+    hard_euclidean_distance_an = 0.0
+    cosine_distance_ap = 0.0
+    cosine_distance_an = 0.0
+    hard_cosine_distance_an = 0.0
+
+    for i, (anchor, positive, negative) in tqdm(enumerate(train_loader), f"Training {epoch + 1}", unit="batch", total=len(train_loader)):
+        optimizer.zero_grad()
+
+        anchor = anchor.to(device)
+        positive = positive.to(device)
+        negative = negative.to(device)
+
+        anchor_features = encoder(anchor)
+        positive_features = encoder(positive)
+        negative_features = encoder(negative)
+
+        batch_losses: Dict[str, Tensor] = loss_fcn(anchor_features, positive_features, negative_features)
+
+        euclidean_distance_ap += torch.norm(anchor_features - positive_features, dim=1).mean()
+        euclidean_distance_an += torch.norm(anchor_features - negative_features, dim=1).mean()
+        hard_euclidean_distance_an += torch.cdist(anchor_features, negative_features).min(dim=1).values.mean()
+
+        cosine_distance_ap += cosine_distance(anchor_features, positive_features).mean()
+        cosine_distance_an += cosine_distance(anchor_features, negative_features).mean()
+        hard_cosine_distance_an += pairwise_cosine_distance(anchor_features, negative_features).min(dim=1).values.mean()
+
+        # Log loss to tensorboard
+        logger.log(
+            {"Train": {**batch_losses, "Learning Rate": optimizer.param_groups[-1]["lr"]}},
+            step=epoch * len(train_loader) * train_loader.batch_size + i * train_loader.batch_size,
+        )
+
+        batch_loss = batch_losses["Overall Loss"]
+        
+        batch_loss.backward()
+        optimizer.step()
+    
+    logger.log(
+        {"Train": {
+            "Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(train_loader),
+            "Hard Euclidean Distance Difference": (hard_euclidean_distance_an - euclidean_distance_ap) / len(train_loader),
+            "Cosine Similarity Difference": (cosine_distance_an - cosine_distance_ap) / len(train_loader),
+            "Hard Cosine Similarity Difference": (hard_cosine_distance_an - cosine_distance_ap) / len(train_loader)}},
+        step=logger.step
+    )
+
+def evaluate(
+    encoder: nn.Module,
+    loss_fcn: nn.Module,
+    test_loader: DataLoader,
+    epoch: int,
+    device: str = "cpu",
+) -> Dict[str, float]:
+    """
+    Evaluate the encoder network on the test set.
+    """
+
+    encoder.eval()
+
+    validation_losses = {}
+    euclidean_distance_ap = 0.0
+    euclidean_distance_an = 0.0
+    hard_euclidean_distance_an = 0.0
+    cosine_distance_ap = 0.0
+    cosine_distance_an = 0.0
+    hard_cosine_distance_an = 0.0
+
+    with torch.no_grad():
+        for _, (anchor, positive, negative) in tqdm(enumerate(test_loader), f"Evaluation {epoch + 1}", unit="batch", total=len(test_loader)):
+            anchor = anchor.to(device)
+            positive = positive.to(device)
+            negative = negative.to(device)
+
+            anchor_features = encoder(anchor)
+            positive_features = encoder(positive)
+            negative_features = encoder(negative)
+            
+            batch_losses: Dict[str, Tensor] = loss_fcn(anchor_features, positive_features, negative_features)
+
+            validation_losses = {k: validation_losses.get(k, 0) + v for k, v in batch_losses.items()}
+
+            euclidean_distance_ap += torch.norm(anchor_features - positive_features, dim=1).mean()
+            euclidean_distance_an += torch.norm(anchor_features - negative_features, dim=1).mean()
+            hard_euclidean_distance_an += torch.cdist(anchor_features, negative_features).min(dim=1).values.mean()
+
+            cosine_distance_ap += cosine_distance(anchor_features, positive_features).mean()
+            cosine_distance_an += cosine_distance(anchor_features, negative_features).mean()
+            hard_cosine_distance_an += pairwise_cosine_distance(anchor_features, negative_features).min(dim=1).values.mean()
+
+    validation_losses = {k: v / len(test_loader) for k, v in validation_losses.items()}
+
+    return {
+        **validation_losses,
+        "Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(test_loader),
+        "Hard Euclidean Distance Difference": (hard_euclidean_distance_an - euclidean_distance_ap) / len(test_loader),
+        "Cosine Similarity Difference": (cosine_distance_an - cosine_distance_ap) / len(test_loader),
+        "Hard Cosine Similarity Difference": (hard_cosine_distance_an - cosine_distance_ap) / len(test_loader),
+    }
 
 if __name__ == "__main__":
     set_random_seed(42)
@@ -412,9 +453,9 @@ if __name__ == "__main__":
     encoder, expander = build_encoder(**args["model"], device=device)
     
     # Create the optimizer, scheduler and loss function
-    optimizer = optim.AdamW(list(encoder.parameters()) + list(expander.parameters()), **args["optimizer"])
+    optimizer = optim.AdamW(list(encoder.parameters()) + list(expander.parameters()))
 
-    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10)
+    scheduler = CosineAnnealingWarmup(optimizer, **args["scheduler"])
 
     loss_fcn = EncoderLoss(expander, **args["loss"])
 
