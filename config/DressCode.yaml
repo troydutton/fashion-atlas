@@ -5,7 +5,7 @@ model:
 train:
   epochs: 20
   batch_size: 38
-  run_name: 'ConvNeXt-T'
+  run_name: 'ConvNeXt-T Batch Hard'
 
 optimizer:
   lr: 0.0001
@@ -18,7 +18,7 @@ scheduler:
 
 loss:
   margin: 1.5
-  temperature: 1.0
+  temperature: 0.0
   triplet_weight: 5.0
   vicreg_weight: 0.8
   var_coeff: 1.0

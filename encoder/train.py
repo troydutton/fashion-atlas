@@ -29,7 +29,7 @@ class DressCodeDataset(Dataset):
 
         self.root = root
 
-        self.data = pd.read_csv(os.path.join(self.root, pairs), delimiter="\t", header=None, names=["model", "garment", "label"]).head(100)
+        self.data = pd.read_csv(os.path.join(self.root, pairs), delimiter="\t", header=None, names=["model", "garment", "label"])
 
         self.transformations = transformations
 
@@ -181,7 +181,7 @@ class BatchHardTripletMarginLoss(nn.Module):
         ) -> None:
         super().__init__()
 
-        # NOTE: Could experiment with decaying temperature.
+        assert temperature >= 0, "Temperature must be non-negative."
 
         self.distance_function = distance_function
         self.pairwise_distance_function = pairwise_distance_function
@@ -199,9 +199,12 @@ class BatchHardTripletMarginLoss(nn.Module):
         distance_ap = self.distance_function(anchor, positive)
         distance_an: Tensor = self.pairwise_distance_function(anchor, negative)
 
-        distribution_an = (-distance_an / self.temperature).softmax(dim=1)
-        indices_an = torch.multinomial(distribution_an, num_samples=1).squeeze()
-        distance_an = distance_an[torch.arange(distance_an.shape[0]), indices_an]
+        if self.temperature == 0:
+            distance_an = distance_an.min(dim=1).values
+        else:
+            distribution_an = (-distance_an / self.temperature).softmax(dim=1)
+            indices_an = torch.multinomial(distribution_an, num_samples=1).squeeze()
+            distance_an = distance_an[torch.arange(distance_an.shape[0]), indices_an]
 
         loss = F.relu(distance_ap - distance_an + self.margin).mean()
 
@@ -465,9 +468,6 @@ if __name__ == "__main__":
     
     # Instantiate the model
     encoder, expander = build_encoder(**args["model"], device=device)
-
-    encoder.load_state_dict(torch.load("models/ConvNeXt-T Semi-Hard 2024-05-31-01-55-38/checkpoint-20.pt", map_location=device))
-
     
     # Create the optimizer, scheduler and loss function
     optimizer = optim.AdamW(list(encoder.parameters()) + list(expander.parameters()))
@@ -475,8 +475,6 @@ if __name__ == "__main__":
     scheduler = CosineAnnealingWarmup(optimizer, **args["scheduler"])
 
     loss_fcn = EncoderLoss(expander, **args["loss"])
-
-    evaluate(encoder, loss_fcn,  DataLoader(test_data, batch_size=38, shuffle=False), 0, device=device)
 
     # Start logging
     os.makedirs("./logs", exist_ok=True)
