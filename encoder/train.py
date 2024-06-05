@@ -29,7 +29,7 @@ class DressCodeDataset(Dataset):
 
         self.root = root
 
-        self.data = pd.read_csv(os.path.join(self.root, pairs), delimiter="\t", header=None, names=["model", "garment", "label"])
+        self.data = pd.read_csv(os.path.join(self.root, pairs), delimiter="\t", header=None, names=["model", "garment", "label"]).head(100)
 
         self.transformations = transformations
 
@@ -294,7 +294,7 @@ def train(
             encoder=encoder,
             optimizer=optimizer,
             loss_fcn=loss_fcn,
-            train_loader=train_loader,
+            dataloader=train_loader,
             logger=logger,
             epoch=epoch,
             device=device,
@@ -303,7 +303,7 @@ def train(
         metrics = evaluate(
             encoder=encoder,
             loss_fcn=loss_fcn,
-            test_loader=test_loader,
+            dataloader=test_loader,
             epoch=epoch,
             device=device,
         )
@@ -323,7 +323,7 @@ def train_one_epoch(
     encoder: nn.Module,
     optimizer: optim.Optimizer,
     loss_fcn: nn.Module,
-    train_loader: DataLoader,
+    dataloader: DataLoader,
     logger: Run,
     epoch: int,
     device: str = "cpu",
@@ -341,7 +341,7 @@ def train_one_epoch(
     cosine_distance_an = 0.0
     hard_cosine_distance_an = 0.0
 
-    for i, (anchor, positive, negative) in tqdm(enumerate(train_loader), f"Training {epoch + 1}", unit="batch", total=len(train_loader)):
+    for i, (anchor, positive, negative) in tqdm(enumerate(dataloader), f"Training {epoch + 1}", unit="batch", total=len(dataloader)):
         optimizer.zero_grad()
 
         anchor = anchor.to(device)
@@ -365,7 +365,7 @@ def train_one_epoch(
         # Log loss to tensorboard
         logger.log(
             {"Train": {**batch_losses, "Learning Rate": optimizer.param_groups[-1]["lr"]}},
-            step=epoch * len(train_loader) * train_loader.batch_size + i * train_loader.batch_size,
+            step=epoch * len(dataloader) * dataloader.batch_size + i * dataloader.batch_size,
         )
 
         batch_loss = batch_losses["Overall Loss"]
@@ -375,17 +375,17 @@ def train_one_epoch(
     
     logger.log(
         {"Train": {
-            "Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(train_loader),
-            "Hard Euclidean Distance Difference": (hard_euclidean_distance_an - euclidean_distance_ap) / len(train_loader),
-            "Cosine Similarity Difference": (cosine_distance_an - cosine_distance_ap) / len(train_loader),
-            "Hard Cosine Similarity Difference": (hard_cosine_distance_an - cosine_distance_ap) / len(train_loader)}},
+            "Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(dataloader),
+            "Hard Euclidean Distance Difference": (hard_euclidean_distance_an - euclidean_distance_ap) / len(dataloader),
+            "Cosine Similarity Difference": (cosine_distance_an - cosine_distance_ap) / len(dataloader),
+            "Hard Cosine Similarity Difference": (hard_cosine_distance_an - cosine_distance_ap) / len(dataloader)}},
         step=logger.step
     )
 
 def evaluate(
     encoder: nn.Module,
     loss_fcn: nn.Module,
-    test_loader: DataLoader,
+    dataloader: DataLoader,
     epoch: int,
     device: str = "cpu",
 ) -> Dict[str, float]:
@@ -403,8 +403,11 @@ def evaluate(
     cosine_distance_an = 0.0
     hard_cosine_distance_an = 0.0
 
+    all_anchor_features = []
+    all_positive_features = []
+
     with torch.no_grad():
-        for _, (anchor, positive, negative) in tqdm(enumerate(test_loader), f"Evaluation {epoch + 1}", unit="batch", total=len(test_loader)):
+        for _, (anchor, positive, negative) in tqdm(enumerate(dataloader), f"Evaluation {epoch + 1}", unit="batch", total=len(dataloader)):
             anchor = anchor.to(device)
             positive = positive.to(device)
             negative = negative.to(device)
@@ -412,6 +415,9 @@ def evaluate(
             anchor_features = encoder(anchor)
             positive_features = encoder(positive)
             negative_features = encoder(negative)
+
+            all_anchor_features.append(anchor_features)
+            all_positive_features.append(positive_features)
             
             batch_losses: Dict[str, Tensor] = loss_fcn(anchor_features, positive_features, negative_features)
 
@@ -425,14 +431,22 @@ def evaluate(
             cosine_distance_an += cosine_distance(anchor_features, negative_features).mean()
             hard_cosine_distance_an += pairwise_cosine_distance(anchor_features, negative_features).min(dim=1).values.mean()
 
-    validation_losses = {k: v / len(test_loader) for k, v in validation_losses.items()}
+    all_anchor_features = torch.cat(all_anchor_features)
+    all_positive_features = torch.cat(all_positive_features)
+
+    all_cosine_distance = pairwise_cosine_distance(all_anchor_features, all_positive_features)
+
+    accuracy = (all_cosine_distance.argmin(dim=1) == torch.arange(len(all_cosine_distance), device=device)).count_nonzero() / len(all_cosine_distance)
+
+    validation_losses = {k: v / len(dataloader) for k, v in validation_losses.items()}
 
     return {
         **validation_losses,
-        "Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(test_loader),
-        "Hard Euclidean Distance Difference": (hard_euclidean_distance_an - euclidean_distance_ap) / len(test_loader),
-        "Cosine Similarity Difference": (cosine_distance_an - cosine_distance_ap) / len(test_loader),
-        "Hard Cosine Similarity Difference": (hard_cosine_distance_an - cosine_distance_ap) / len(test_loader),
+        "Accuracy": accuracy.item(),
+        "Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(dataloader),
+        "Hard Euclidean Distance Difference": (hard_euclidean_distance_an - euclidean_distance_ap) / len(dataloader),
+        "Cosine Similarity Difference": (cosine_distance_an - cosine_distance_ap) / len(dataloader),
+        "Hard Cosine Similarity Difference": (hard_cosine_distance_an - cosine_distance_ap) / len(dataloader),
     }
 
 if __name__ == "__main__":
@@ -451,6 +465,9 @@ if __name__ == "__main__":
     
     # Instantiate the model
     encoder, expander = build_encoder(**args["model"], device=device)
+
+    encoder.load_state_dict(torch.load("models/ConvNeXt-T Semi-Hard 2024-05-31-01-55-38/checkpoint-20.pt", map_location=device))
+
     
     # Create the optimizer, scheduler and loss function
     optimizer = optim.AdamW(list(encoder.parameters()) + list(expander.parameters()))
@@ -458,6 +475,8 @@ if __name__ == "__main__":
     scheduler = CosineAnnealingWarmup(optimizer, **args["scheduler"])
 
     loss_fcn = EncoderLoss(expander, **args["loss"])
+
+    evaluate(encoder, loss_fcn,  DataLoader(test_data, batch_size=38, shuffle=False), 0, device=device)
 
     # Start logging
     os.makedirs("./logs", exist_ok=True)
