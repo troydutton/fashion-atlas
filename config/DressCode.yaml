@@ -5,7 +5,7 @@ model:
 train:
   epochs: 20
   batch_size: 38
-  run_name: 'ConvNeXt-T Semi-Hard'
+  run_name: 'ConvNeXt-T'
 
 optimizer:
   lr: 0.0001

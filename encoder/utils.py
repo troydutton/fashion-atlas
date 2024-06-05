@@ -1,4 +1,5 @@
 import os
+import random
 from typing import Dict, Tuple
 
 import numpy as np
@@ -85,7 +86,11 @@ def set_random_seed(seed: int) -> None:
     """
     Set the random seed for reproducibility.
     """
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-    torch.use_deterministic_algorithms(True)
-    torch.manual_seed(seed)
+    random.seed(seed)
     np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.use_deterministic_algorithms(True)
+    
+    os.environ['PYTHONHASHSEED'] = str(seed) 
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
