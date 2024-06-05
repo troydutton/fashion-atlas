@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="img/icon.png" alt="Image Description" width="200" /> 
+    <img src="assets/icon.png" alt="Image Description" width="200" /> 
 </p>
 
 # Fashion Atlas
