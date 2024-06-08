@@ -1,5 +1,5 @@
 import os
-from typing import List, Tuple
+from typing import Dict, List
 
 import pandas as pd
 import torch
@@ -38,7 +38,7 @@ args = parse_config("config/DressCode.yaml")
 # Load the models
 encoder, expander = build_encoder(**args["model"], device=device)
 
-encoder.load_state_dict(torch.load("models\ConvNeXt-T Batch Hard 2024-05-30-10-22-38\checkpoint-20.pt", map_location=device))
+encoder.load_state_dict(torch.load("models/ConvNeXt-T Semi-Hard 2024-05-31-01-55-38/checkpoint-20.pt", map_location=device))
 
 encoder.eval()
 
@@ -57,9 +57,9 @@ data = pd.concat([train_data, test_data])
 features = torch.load(os.path.join(DRESSCODE_ROOT, "features.pt"))
 feature_indices = torch.load(os.path.join(DRESSCODE_ROOT, "feature_indices.pt"))
 
-def get_similar_garments(image: Image.Image, min_confidence: float = 0.5) -> List[Tuple[List[int], int, str]]:
+def get_similar_garments(image: Image.Image, min_confidence: float = 0.5) -> List[Dict]:
     """
-    Returns a list of predictions containing the bounding box, label, and class name.
+    Returns a dictionary with the bounding box coordinates, class name, and a list of similar images for .
     """
     predictions: Results = yolo.predict(image)[0]
 
@@ -79,7 +79,11 @@ def get_similar_garments(image: Image.Image, min_confidence: float = 0.5) -> Lis
 
         similar_images = get_similar_images(image.crop(bounding_box), label)
 
-        results.append((bounding_box, class_name, similar_images))
+        results.append({
+            "bounding_box": bounding_box,
+            "class_name": class_name,
+            "similar_images": similar_images
+        })
 
     return results
 

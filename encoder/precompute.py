@@ -8,8 +8,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 from torch import Tensor, nn
 from tqdm import tqdm
-
-from .utils import build_encoder, get_transforms, set_random_seed
+from utils import build_encoder, get_transforms, set_random_seed
 
 # Root directory for the dataset
 DRESSCODE_ROOT = "data/DressCode/"
@@ -73,7 +72,7 @@ if __name__ == "__main__":
     # Load in the encoder network
     encoder, _ = build_encoder(embedding_dim=1024, expander_dim=4096, device=device)
 
-    encoder.load_state_dict(torch.load("models\ConvNeXt-T Batch Hard 2024-05-30-10-22-38\checkpoint-20.pt"))
+    encoder.load_state_dict(torch.load("models\ConvNeXt-T Semi-Hard 2024-05-31-01-55-38\checkpoint-20.pt"))
 
     _, transformations = get_transforms()
 
