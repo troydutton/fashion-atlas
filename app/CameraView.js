@@ -17,7 +17,7 @@ export default function CameraView({ navigation }) {
 
   if (!permission.granted) {
     return (
-      <View style={styles.container}>
+      <View style={styles.imageContainer}>
         <View style={styles.permissionTextContainer}>
           <Text style={styles.text}>Accept camera permissions to continue.</Text>
         </View>
@@ -55,7 +55,7 @@ export default function CameraView({ navigation }) {
         }
         return response.json();
       }).then(data => {
-        navigation.navigate('Images', {similarImages: data[0].similar_images});
+        navigation.navigate('Images', {similarGarments: data[0].similar_garments, similarModels: data[0].similar_models});
       }).catch(error => {
         console.error(error);
       });

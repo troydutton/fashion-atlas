@@ -22,6 +22,10 @@ export const styles = StyleSheet.create({
     color: 'white',
     fontSize: 20,
   },
+  imageViewContainer: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
   container: {
     flex: 1,
     backgroundColor: 'black',
@@ -30,7 +34,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center', // Center the buttons horizontally
     backgroundColor: 'transparent',
-    padding: 20, // Add some padding if needed
+    padding: 20,
   },
   flipButton: {
     alignSelf: 'center',
@@ -45,7 +49,28 @@ export const styles = StyleSheet.create({
     marginTop: 45
   },
   image: {
-    width: windowWidth * 0.5,
-    height: (windowHeight - 40) * 0.5,
+    width: windowWidth * 0.7,
+    height: windowHeight * 0.3,
+    borderRadius: 15,
+  },
+  imageContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: windowWidth * 0.7,
+    height: windowHeight * 0.3,
+    margin: 10,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: 'white',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    padding: 10,
+  },
+  list: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

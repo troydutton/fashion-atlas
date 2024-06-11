@@ -34,7 +34,8 @@ def image():
 
         # Convert the images to base64
         for result in results:
-            result["similar_images"] = [convert_image_to_base64(img) for img in result["similar_images"]]
+            result["similar_garments"] = [convert_image_to_base64(img) for img in result["similar_garments"]]
+            result["similar_models"] = [convert_image_to_base64(img) for img in result["similar_models"]]
 
         return jsonify(results), 200
     except KeyError:
