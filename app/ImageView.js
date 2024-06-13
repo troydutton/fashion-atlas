@@ -13,7 +13,6 @@ export default function ImageView({ navigation, route}) {
         <TouchableOpacity
             style={styles.imageContainer}
             onPress={() => {
-                // Update the state of the individual image
                 setDisplayGarments(prevState => {
                     const newState = [...prevState];
                     newState[index] = !newState[index];
@@ -24,7 +23,7 @@ export default function ImageView({ navigation, route}) {
             <Image
                 key={index}
                 style={styles.image}
-                source={{ uri: `data:image/jpeg;base64,${displayGarments ? similarGarments[index] : similarModels[index]}` }}
+                source={{uri: `data:image/jpeg;base64,${displayGarments[index] ? similarGarments[index] : similarModels[index]}`}}
             />
         </TouchableOpacity>
     );
