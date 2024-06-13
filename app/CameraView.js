@@ -1,4 +1,4 @@
-import { Camera, CameraType } from 'expo-camera';
+import { Camera, CameraType } from 'expo-camera/legacy';
 import { useState, useRef } from 'react';
 import { Button, Text, TouchableOpacity, View} from 'react-native';
 import { useIsFocused  } from '@react-navigation/native';
@@ -39,7 +39,7 @@ export default function CameraView({ navigation }) {
         type: 'image/jpeg',
         name: 'image.jpg',
       });
-      fetch('http://192.168.6.2:5000/image', {
+      fetch('http://100.110.148.24:5000/image', {
         method: 'POST',
         body: formData,
         headers: {

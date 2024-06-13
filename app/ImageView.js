@@ -3,17 +3,22 @@ import React, { useState } from 'react';
 import Icon from 'react-native-ico-material-design';
 import { styles } from './styles/style';
 
-export default function SelectionView({ navigation, route}) {
+export default function ImageView({ navigation, route}) {
     const similarGarments = route.params.similarGarments;
     const similarModels = route.params.similarModels;
 
-    const [displayGarments, setDisplayGarments] = useState(true);
+    const [displayGarments, setDisplayGarments] = useState(similarGarments.map(() => true));
 
     const renderItem = ({ item, index }) => (
         <TouchableOpacity
             style={styles.imageContainer}
             onPress={() => {
-                setDisplayGarments(prevState => !prevState);
+                // Update the state of the individual image
+                setDisplayGarments(prevState => {
+                    const newState = [...prevState];
+                    newState[index] = !newState[index];
+                    return newState;
+                });
             }}
         >
             <Image
