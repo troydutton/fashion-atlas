@@ -47,9 +47,9 @@ yolo = YOLO("models/yolov8m.pt")
 _, transformations = get_transforms()
 
 # Read in the dataset
-train_data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "train_pairs.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
+train_data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "train_pairs_cropped.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
 
-test_data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "test_pairs_paired.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
+test_data = pd.read_csv(os.path.join(DRESSCODE_ROOT, "test_pairs_paired_cropped.txt"), delimiter="\t", header=None, names=["model", "garment", "label"])
 
 data = pd.concat([train_data, test_data])
 
@@ -88,7 +88,7 @@ def get_similar_garments(image: Image.Image, min_confidence: float = 0.5) -> Lis
 
     return results
 
-def get_similar_images(image: Image.Image, label: int, n: int = 4) -> list[Image.Image]:
+def get_similar_images(image: Image.Image, label: int, n: int = 4) -> tuple[list[Image.Image], list[Image.Image]]:
     """
     Returns the n images that are most similar to the input image.
     """
@@ -109,8 +109,8 @@ def get_similar_images(image: Image.Image, label: int, n: int = 4) -> list[Image
 
         similar_image_indices = class_feature_indices[similar_image_indices]
 
-        similar_garments = [Image.open(os.path.join(DRESSCODE_ROOT, LABEL_TO_GARMENT_TYPE[label], "cropped_images", data.iloc[idx]["garment"])) for idx in similar_image_indices]
+        similar_garments = [Image.open(os.path.join(DRESSCODE_ROOT, LABEL_TO_GARMENT_TYPE[label], "images", data.iloc[idx]["garment"])) for idx in similar_image_indices]
 
-        similar_models = [Image.open(os.path.join(DRESSCODE_ROOT, LABEL_TO_GARMENT_TYPE[label], "cropped_images", data.iloc[idx]["model"])) for idx in similar_image_indices]
+        similar_models = [Image.open(os.path.join(DRESSCODE_ROOT, LABEL_TO_GARMENT_TYPE[label], "images", data.iloc[idx]["model"])) for idx in similar_image_indices]
 
     return similar_garments, similar_models

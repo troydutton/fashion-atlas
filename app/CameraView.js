@@ -1,6 +1,6 @@
 import { Camera, CameraType } from 'expo-camera/legacy';
 import { useState, useRef } from 'react';
-import { Button, Text, TouchableOpacity, View} from 'react-native';
+import { Button, Text, TouchableOpacity, View, ActivityIndicator} from 'react-native';
 import { useIsFocused  } from '@react-navigation/native';
 import Icon from 'react-native-ico-material-design';
 import { styles } from './styles/style';
@@ -8,6 +8,7 @@ import { styles } from './styles/style';
 export default function CameraView({ navigation }) {
   const [type, setType] = useState(CameraType.back);
   const [permission, requestPermission] = Camera.useCameraPermissions();
+  const [isLoading, setIsLoading] = useState(false);
   const isFocused = useIsFocused()
   const cameraRef = useRef(null);
 
@@ -17,7 +18,7 @@ export default function CameraView({ navigation }) {
 
   if (!permission.granted) {
     return (
-      <View style={styles.imageContainer}>
+      <View style={styles.container}>
         <View style={styles.permissionTextContainer}>
           <Text style={styles.text}>Accept camera permissions to continue.</Text>
         </View>
@@ -39,6 +40,9 @@ export default function CameraView({ navigation }) {
         type: 'image/jpeg',
         name: 'image.jpg',
       });
+
+      setIsLoading(true);
+
       fetch('http://100.110.148.24:5000/image', {
         method: 'POST',
         body: formData,
@@ -46,6 +50,8 @@ export default function CameraView({ navigation }) {
           'content-type': 'multipart/form-data',
         },
       }).then(response => {
+        setIsLoading(false);
+
         if (response.status === 400) {
           throw new Error('No image provided');
         } else if (response.status === 500) {
@@ -66,17 +72,26 @@ export default function CameraView({ navigation }) {
     setType(current => (current === CameraType.back ? CameraType.front : CameraType.back));
   }
 
-  return (
-    <View style={styles.container}>
-        {isFocused && <Camera ref={cameraRef} ratio="16:9" style={styles.camera} type={type} />}
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.flipButton} onPress={flipCamera}>
-            <Icon name="synchronization-button-with-two-arrows" color="white" width="60" height="60"/>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.takePictureButton} onPress={takePicture}>
-            <Icon name="radio-on-button" color="white" width="70" height="70"/>
-          </TouchableOpacity>
-        </View>
-    </View>
-  );
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="black" />
+        <Text color="black">Loading Similar Garments...</Text>
+      </View>
+    );
+  } else {
+    return (
+      <View style={styles.container}>
+          {isFocused && <Camera ref={cameraRef} ratio="16:9" style={styles.camera} type={type} />}
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity style={styles.flipButton} onPress={flipCamera}>
+              <Icon name="synchronization-button-with-two-arrows" color="white" width="60" height="60"/>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.takePictureButton} onPress={takePicture}>
+              <Icon name="radio-on-button" color="white" width="70" height="70"/>
+            </TouchableOpacity>
+          </View>
+      </View>
+    );
+  }
 }
