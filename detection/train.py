@@ -7,8 +7,6 @@ if __name__ == "__main__":
     # Load the model
     model = YOLO("yolov8m")
 
-    model.ini
-
     # Train the model
     model.train(
         data="config/DeepFashion2.yaml",

@@ -10,14 +10,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision.transforms.v2 as transforms
+import wandb
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from utils import build_encoder, cosine_distance, get_transforms, pairwise_cosine_distance, parse_config, set_random_seed
 from wandb.wandb_run import Run
-
-import wandb
 
 DRESSCODE_ROOT = "data/DressCode/"
 
@@ -70,6 +69,7 @@ class DressCodeDataset(Dataset):
         negative = self.transformations(negative)
 
         return anchor, positive, negative
+    
 class EncoderLoss(nn.Module):
     def __init__(
             self, 
@@ -80,7 +80,9 @@ class EncoderLoss(nn.Module):
             inv_coeff: float = 1.0, 
             cov_coeff: float=1e-5, 
             margin: float = 1.0,
-            temperature: float = 1.0
+            initial_temperature: float = 1.0,
+            temperature_decay: float = 1.0,
+            minimum_temperature: float = 0.0,
         ) -> None:
         super().__init__()
 
@@ -89,7 +91,7 @@ class EncoderLoss(nn.Module):
         self.expander = expander
 
         # self.triplet_loss = nn.TripletMarginWithDistanceLoss(distance_function=cosine_distance, margin=margin)
-        self.triplet_loss = BatchHardTripletMarginLoss(margin=margin, temperature=temperature)
+        self.triplet_loss = BatchHardTripletMarginLoss(margin=margin, initial_temperature=initial_temperature, temperature_decay=temperature_decay, minimum_temperature=minimum_temperature)
         # self.triplet_loss = BatchAllTripletMarginLoss(margin=margin)
         
         self.vicreg_loss = VICRegLoss(var_coeff, inv_coeff, cov_coeff)
@@ -112,6 +114,7 @@ class EncoderLoss(nn.Module):
         overall_loss = self.triplet_weight * triplet_loss + self.vicreg_weight * vicreg_loss
 
         return {"Overall Loss": overall_loss, "Triplet Loss": triplet_loss, "VICReg Loss": vicreg_loss}
+    
 class VICRegLoss(nn.Module):
     """
     Computes the VICReg loss proposed in https://arxiv.org/abs/2105.04906.
@@ -171,21 +174,28 @@ class VICRegLoss(nn.Module):
         cov = (x.T @ x) / (x.shape[0] - 1)
         cov_loss = cov.fill_diagonal_(0.0).pow(2).sum() / x.shape[1]
         return cov_loss
+
 class BatchHardTripletMarginLoss(nn.Module):
     def __init__(
             self,
             distance_function: Callable[[Tensor, Tensor], Tensor] = cosine_distance, 
             pairwise_distance_function: Callable[[Tensor, Tensor], Tensor] = pairwise_cosine_distance, 
             margin: float = 1.0,
-            temperature: float = 1.0
+            initial_temperature: float = 1.0,
+            temperature_decay: float = 1.0,
+            minimum_temperature: float = 0.0,
         ) -> None:
         super().__init__()
 
-        assert temperature >= 0, "Temperature must be non-negative."
+        assert initial_temperature >= 0, "Temperature must be non-negative."
+        assert temperature_decay >= 0, "Temperature decay must be non-negative."
+        assert minimum_temperature >= 0, "Minimum temperature must be non-negative."
 
         self.distance_function = distance_function
         self.pairwise_distance_function = pairwise_distance_function
-        self.temperature = temperature
+        self.temperature = initial_temperature
+        self.temperature_decay = temperature_decay
+        self.minimum_temperature = minimum_temperature
         self.margin = margin
 
     def forward(self, anchor: Tensor, positive: Tensor, negative: Tensor) -> Tensor:
@@ -197,7 +207,7 @@ class BatchHardTripletMarginLoss(nn.Module):
         """
 
         distance_ap = self.distance_function(anchor, positive)
-        distance_an: Tensor = self.pairwise_distance_function(anchor, negative)
+        distance_an = self.pairwise_distance_function(anchor, negative)
 
         if self.temperature == 0:
             distance_an = distance_an.min(dim=1).values
@@ -209,6 +219,10 @@ class BatchHardTripletMarginLoss(nn.Module):
         loss = F.relu(distance_ap - distance_an + self.margin).mean()
 
         return loss
+    
+    def decay_temperature(self) -> None:
+        self.temperature = max(self.minimum_temperature, self.temperature * self.temperature_decay)
+
 class BatchAllTripletMarginLoss(nn.Module):
     def __init__(
             self,
@@ -218,7 +232,6 @@ class BatchAllTripletMarginLoss(nn.Module):
         ) -> None:
         super().__init__()
 
-        # NOTE: Could experiment with decaying temperature.
         self.distance_function = distance_function
         self.pairwise_distance_function = pairwise_distance_function
         self.margin = margin
@@ -236,6 +249,7 @@ class BatchAllTripletMarginLoss(nn.Module):
         loss = F.relu(distance_ap - distance_an + self.margin).mean()
 
         return loss
+    
 class CosineAnnealingWarmup:
     def __init__(self, optimizer: optim.Optimizer, warmup_steps: int, period: int, min_lr: float = 1e-6, max_lr: float = 1e-3) -> None:
         self.optimizer = optimizer
@@ -287,7 +301,7 @@ def train(
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, run_name), exist_ok=True)
 
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=2)
 
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
@@ -344,7 +358,7 @@ def train_one_epoch(
     cosine_distance_an = 0.0
     hard_cosine_distance_an = 0.0
 
-    for i, (anchor, positive, negative) in tqdm(enumerate(dataloader), f"Training {epoch + 1}", unit="batch", total=len(dataloader)):
+    for i, (anchor, positive, negative) in tqdm(enumerate(dataloader), f"Training (Epoch {epoch + 1})", unit="batch", total=len(dataloader)):
         optimizer.zero_grad()
 
         anchor = anchor.to(device)
@@ -365,17 +379,20 @@ def train_one_epoch(
         cosine_distance_an += cosine_distance(anchor_features, negative_features).mean()
         hard_cosine_distance_an += pairwise_cosine_distance(anchor_features, negative_features).min(dim=1).values.mean()
 
+        # TODO: Find a better way to log & step the temperature
         # Log loss to tensorboard
         logger.log(
-            {"Train": {**batch_losses, "Learning Rate": optimizer.param_groups[-1]["lr"]}},
+            {"Train": {**batch_losses, "Learning Rate": optimizer.param_groups[-1]["lr"], "Temperature": loss_fcn.triplet_loss.temperature}},
             step=epoch * len(dataloader) * dataloader.batch_size + i * dataloader.batch_size,
         )
+
+        loss_fcn.triplet_loss.decay_temperature()
 
         batch_loss = batch_losses["Overall Loss"]
         
         batch_loss.backward()
         optimizer.step()
-    
+
     logger.log(
         {"Train": {
             "Euclidean Distance Difference": (euclidean_distance_an - euclidean_distance_ap) / len(dataloader),
@@ -393,7 +410,7 @@ def evaluate(
     device: str = "cpu",
 ) -> Dict[str, float]:
     """
-    Evaluate the encoder network on the test set.
+    Evaluate the encoder network. Returns a dictionary of metrics.
     """
 
     encoder.eval()
@@ -410,7 +427,7 @@ def evaluate(
     all_positive_features = []
 
     with torch.no_grad():
-        for _, (anchor, positive, negative) in tqdm(enumerate(dataloader), f"Evaluation {epoch + 1}", unit="batch", total=len(dataloader)):
+        for _, (anchor, positive, negative) in tqdm(enumerate(dataloader), f"Evaluation (Epoch {epoch + 1})", unit="batch", total=len(dataloader)):
             anchor = anchor.to(device)
             positive = positive.to(device)
             negative = negative.to(device)
@@ -479,7 +496,7 @@ if __name__ == "__main__":
     # Start logging
     os.makedirs("./logs", exist_ok=True)
 
-    logger = wandb.init(dir="./logs", project="fashion-atlas", name=args["train"]["run_name"], config=args)
+    logger = wandb.init(dir="./logs", project="fashion-atlas", name=args["train"]["run_name"], config={**args, "train_transformations": train_transformations.__str__(), "test_transformations": test_transformations.__str__()})
 
     # Train the model
     train(

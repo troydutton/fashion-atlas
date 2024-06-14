@@ -13,6 +13,7 @@ from torchvision import models
 IMAGE_SIZE = (256, 192)
 IMNET_MEAN = [0.485, 0.456, 0.406]
 IMNET_STD = [0.229, 0.224, 0.225]
+DRESSCODE_BACKGROUND = [0.9536, 0.9470, 0.9417]
 
 def cosine_distance(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """
@@ -65,8 +66,15 @@ def get_transforms() -> tuple[transforms.Compose, transforms.Compose]:
             transforms.ToDtype(torch.float32, scale=True),
             transforms.Resize(IMAGE_SIZE), 
             transforms.RandomHorizontalFlip(),
-            transforms.RandomApply([transforms.RandomPerspective(interpolation=transforms.InterpolationMode.NEAREST, fill=(0.9536, 0.9470, 0.9417))]),
-            transforms.RandomApply([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 1.0))]),
+            transforms.RandomApply([transforms.RandomChoice([
+                transforms.RandomPerspective(interpolation=transforms.InterpolationMode.NEAREST, fill=DRESSCODE_BACKGROUND),
+                transforms.RandomAffine(degrees=35, translate=(0.1, 0.1), scale=(0.5, 1.2), fill=DRESSCODE_BACKGROUND),
+                transforms.RandomRotation(degrees=35, fill=DRESSCODE_BACKGROUND)])]),
+            transforms.RandomApply([transforms.RandomChoice([
+                transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 1.0)),
+                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+                transforms.RandomGrayscale(p=1.0),
+                transforms.RandomErasing(p=1.0, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=DRESSCODE_BACKGROUND)])]),
             transforms.Normalize(IMNET_MEAN, IMNET_STD),
         ]
     )
