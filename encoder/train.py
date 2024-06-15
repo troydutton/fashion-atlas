@@ -13,7 +13,7 @@ import torchvision.transforms.v2 as transforms
 import wandb
 from PIL import Image
 from torch import Tensor
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
 from utils import build_encoder, cosine_distance, get_transforms, pairwise_cosine_distance, parse_config, set_random_seed
 from wandb.wandb_run import Run
@@ -301,7 +301,11 @@ def train(
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, run_name), exist_ok=True)
 
+    train_subset = Subset(train_data, random.sample(range(len(train_data)), 5000))
+
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=2)
+
+    train_subset_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=False, num_workers=2)
 
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
@@ -317,7 +321,15 @@ def train(
             device=device,
         )
 
-        metrics = evaluate(
+        train_metrics = evaluate(
+            encoder=encoder,
+            loss_fcn=loss_fcn,
+            dataloader=train_subset_loader,
+            epoch=epoch,
+            device=device,
+        )
+        
+        test_metrics = evaluate(
             encoder=encoder,
             loss_fcn=loss_fcn,
             dataloader=test_loader,
@@ -325,10 +337,10 @@ def train(
             device=device,
         )
 
-        metrics_str = " ".join(f"{k}: {v:.2f}" for k, v in metrics.items())
-        print(f"Epoch {epoch + 1} {metrics_str}")
+        metrics_str = " ".join(f"{k}: {test_metrics[k]:.2f}({train_metrics[k]:.2f})" for k in train_metrics.keys())
+        print(f"Epoch {epoch + 1}: {metrics_str}")
 
-        logger.log({"Val": metrics}, step=logger.step)
+        logger.log({"Val": test_metrics, "Train": train_metrics}, step=logger.step)
 
         scheduler.step()
 
@@ -496,7 +508,7 @@ if __name__ == "__main__":
     # Start logging
     os.makedirs("./logs", exist_ok=True)
 
-    logger = wandb.init(dir="./logs", project="fashion-atlas", name=args["train"]["run_name"], config={**args, "train_transformations": train_transformations.__str__(), "test_transformations": test_transformations.__str__()})
+    logger = wandb.init(dir="./logs", project="fashion-atlas", name=args["train"]["run_name"], config={**args, "train_transformations": train_transformations, "test_transformations": test_transformations})
 
     # Train the model
     train(
