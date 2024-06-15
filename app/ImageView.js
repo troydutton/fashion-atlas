@@ -30,7 +30,10 @@ export default function ImageView({ navigation, route}) {
     return (
         <View style={styles.imageViewContainer}>
             <View style={{marginTop: 50, padding: 5}}>
-                <TouchableOpacity onPress={() => navigation.navigate('Camera')}>
+                <TouchableOpacity onPress={() => navigation.navigate('Selection', {
+                    imageUri: route.params.imageUri,
+                    detections: route.params.detections
+                })}>
                     <Icon name="go-back-left-arrow" color="" width="40" height="40"/>
                 </TouchableOpacity>
             </View>

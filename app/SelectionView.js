@@ -1,12 +1,12 @@
 import { TouchableOpacity, View, ActivityIndicator, Text, ImageBackground , Dimensions } from 'react-native';
 import Icon from 'react-native-ico-material-design';
 import { styles } from './styles/style';
-import useImageSize from './useImageSize';
 
 export default function SelectionView({ navigation, route}) {
     const detections = route.params.detections;
     const imageUri = route.params.imageUri;
 
+    const colors = ['red', 'blue', 'green', 'yellow', 'magenta', 'cyan', 'orange', 'purple', 'pink', 'lime'];
 
     console.log(detections[0].bounding_box)
     
@@ -29,19 +29,25 @@ export default function SelectionView({ navigation, route}) {
                 <TouchableOpacity
                     key={index}
                     onPress={() => navigation.navigate('Images', {
+                        imageUri: imageUri,
+                        detections: detections,
                         similarGarments: detection.similar_garments,
                         similarModels: detection.similar_models
                     })}                  
                     style={{
                         borderWidth: 2,
-                        borderColor: 'red',
+                        borderColor: colors[index % colors.length],
                         position: 'absolute',
                         left: detection.bounding_box[0] * imgWidth,
                         top: detection.bounding_box[1] * imgHeight,
                         width: (detection.bounding_box[2] - detection.bounding_box[0]) * imgWidth,
                         height: (detection.bounding_box[3] - detection.bounding_box[1]) * imgHeight,
                     }}
-                />
+                >
+                    <Text style={{color: colors[index % colors.length], fontSize: 10, top:-20}}>
+                        {detection.class_name}
+                    </Text>
+                </TouchableOpacity>
             ))}
         </ImageBackground >
       </View>
