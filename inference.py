@@ -59,28 +59,48 @@ feature_indices = torch.load(os.path.join(DRESSCODE_ROOT, "feature_indices.pt"))
 
 def get_similar_garments(image: Image.Image, min_confidence: float = 0.5) -> List[Dict]:
     """
-    Returns a dictionary with the bounding box coordinates, class name, and a list of similar images for .
+    Detects the garments in the image and returns the most similar garments from the dataset.
+
+    For each garment it returns a dictionary which contains the following keys:
+
+    bounding_box: The bounding box coordinates of the detected garment in image-normalized xyxy format.
+    class_name: The human-readable class name of the detected garment.
+    similar_garments: A list of images of similar garments against a plain background.
+    similar_models: A list of images of models wearing the similar garments.
     """
     predictions: Results = yolo.predict(image)[0]
 
     if len(predictions) == 0:
         return None
+    
+    # Visualize predictions
+    predictions.show()
 
     detections = predictions.boxes
 
     detections = detections[detections.conf > min_confidence]
 
+    if len(detections) == 0:
+        return None
+    
+    height, width = detections.orig_shape
+
+    print(detections)
+
     results = []
 
     for detection in detections:
         bounding_box = detection.xyxy[0].round().int().tolist()
+        
         label = CLASS_TO_LABEL[detection.cls.int().item()]
         class_name = CLASS_NAMES[detection.cls.int().item()]
 
         similar_garments, similar_models = get_similar_images(image.crop(bounding_box), label)
 
+        print(similar_garments[0].size)
+
         results.append({
-            "bounding_box": bounding_box,
+            "bounding_box": detection.xyxyn[0].tolist(),
             "class_name": class_name,
             "similar_garments": similar_garments,
             "similar_models": similar_models
@@ -90,27 +110,24 @@ def get_similar_garments(image: Image.Image, min_confidence: float = 0.5) -> Lis
 
 def get_similar_images(image: Image.Image, label: int, n: int = 4) -> tuple[list[Image.Image], list[Image.Image]]:
     """
-    Returns the n images that are most similar to the input image.
+    Returns the top n most similar garment & model images for the given image.
     """
     class_features = features[LABEL_TO_GARMENT_TYPE[label]]
     class_feature_indices = feature_indices[LABEL_TO_GARMENT_TYPE[label]]
 
     with torch.no_grad():
-        # Caluclate the features for the image
         image: torch.Tensor = transformations(image).to(device)
 
         image_features = encoder(image.unsqueeze(0)).cpu()
 
-        # Calculate the cosine similarity for every image
         similarities = torch.cosine_similarity(image_features, class_features)
 
-        # Find the images with the highest similarity
         similar_image_indices = torch.argsort(similarities, descending=True)[:n].numpy()
 
         similar_image_indices = class_feature_indices[similar_image_indices]
 
-        similar_garments = [Image.open(os.path.join(DRESSCODE_ROOT, LABEL_TO_GARMENT_TYPE[label], "images", data.iloc[idx]["garment"])) for idx in similar_image_indices]
+        similar_garments = [Image.open(os.path.join(DRESSCODE_ROOT, LABEL_TO_GARMENT_TYPE[label], "images", data.iloc[i]["garment"])) for i in similar_image_indices]
 
-        similar_models = [Image.open(os.path.join(DRESSCODE_ROOT, LABEL_TO_GARMENT_TYPE[label], "images", data.iloc[idx]["model"])) for idx in similar_image_indices]
+        similar_models = [Image.open(os.path.join(DRESSCODE_ROOT, LABEL_TO_GARMENT_TYPE[label], "images", data.iloc[i]["model"])) for i in similar_image_indices]
 
     return similar_garments, similar_models
