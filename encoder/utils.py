@@ -27,7 +27,7 @@ def pairwise_cosine_distance(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """
     return 1 - pairwise_cosine_similarity(x, y)
 
-def build_encoder(embedding_dim: int, expander_dim: int, dropout: float, device: torch.device) -> Tuple[nn.Module, nn.Module]:
+def build_encoder(embedding_dim: int = 1024, expander_dim: int = 4096, dropout: float = 0.4, device: torch.device = torch.device("cpu")) -> Tuple[nn.Module, nn.Module]:
     """
     Build the encoder and expander networks.
     """
