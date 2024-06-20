@@ -6,7 +6,7 @@ model:
 train:
   epochs: 20
   batch_size: 32
-  run_name: 'ConvNeXt-S Decaying Semi-Hard Transforms'
+  run_name: 'ConvNeXt-S'
 
 optimizer:
   lr: 0.0001
