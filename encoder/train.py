@@ -260,7 +260,7 @@ def train(
     loss_fcn: nn.Module,
     logger: Run,
     epochs: int = 10,
-    batch_size: int = 42,
+    batch_size: int = 32,
     device: str = "cpu",
     output_dir: str = "./models",
     run_name: str = "ConvNeXt-S",
