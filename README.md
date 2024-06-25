@@ -28,7 +28,7 @@ npm install
 cd ..
 ```
 
-4. Download the pretrained weights for the object detection model and encoder network, placing the files in the ```models``` directory.
+4. Download the pretrained weights for the [object detection model](https://drive.google.com/file/d/19WU9ow3q0Lq6-mxG3Z-E2zj7Bm-iQ04C/view?usp=sharing) and [encoder network](https://drive.google.com/file/d/1hT9hiKDFXdDWBzBsry3M0Yj3cBSlntGE/view?usp=sharing), placing the files in the ```models``` directory.
 
 5. Download the datasets and extract them to the ```data``` directory:
 
