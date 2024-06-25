@@ -43,7 +43,7 @@ export default function CameraView({ navigation }) {
 
       setIsLoading(true);
 
-      fetch('http://100.110.148.24:5000/image', {
+      fetch('http://100.110.148.33:5000/image', {
         method: 'POST',
         body: formData,
         headers: {
