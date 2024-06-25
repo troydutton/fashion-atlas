@@ -13,7 +13,7 @@ export default function App() {
       <NavigationContainer>
         <Stack.Navigator initialRouteName="Camera">
           <Stack.Screen name="Camera" component={CameraView} options={{ headerShown: false }}/>
-          {/* <Stack.Screen name="Selection" component={SelectionView} options={{ headerShown: false }}/> */}
+          <Stack.Screen name="Selection" component={SelectionView} options={{ headerShown: false }}/>
           <Stack.Screen name="Images" component={ImageView} options={{ headerShown: false }}/>
         </Stack.Navigator>
       </NavigationContainer>

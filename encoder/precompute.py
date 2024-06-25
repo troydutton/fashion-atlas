@@ -1,5 +1,4 @@
 import os
-from glob import glob
 from typing import Dict, Tuple
 
 import numpy as np
@@ -60,33 +59,6 @@ def precompute_dataset_features(
 
     return features, feature_indices
 
-def select_model(models_dir: str = "models/") -> str:
-    """
-    Prompts the user to select a model and checkpoint.
-
-    Returns the path to the selected checkpoint.
-    """
-
-    dirs = [d for d in glob(models_dir + '/*') if os.path.isdir(d)]
-
-    for i, dir in enumerate(dirs):
-        print(f"[{i:2}]: {dir.strip('models/')}")
-
-    while (i := int(input(f"Select a model (0 - {len(dirs) - 1}): "))) < 0 or i > len(dirs) - 1:
-        pass
-
-    checkpoints = glob(dirs[i] + '/*.pt')
-
-    checkpoints.sort(key = lambda x: int(x.split('-')[-1].split('.')[0]))
-
-    while (i := int(input(f"Select a checkpoint (0 - {len(checkpoints) - 1}): "))) < 0 or i > len(checkpoints) - 1:
-        pass
-
-    checkpoint = checkpoints[i]
-
-    return checkpoint
-
-    
 if __name__ == "__main__":
     set_random_seed(42)
 

@@ -61,7 +61,7 @@ export default function CameraView({ navigation }) {
         }
         return response.json();
       }).then(data => {
-        navigation.navigate('Images', {similarGarments: data[0].similar_garments, similarModels: data[0].similar_models});
+        navigation.navigate('Selection', {imageUri: photo.uri, detections: data});
       }).catch(error => {
         console.error(error);
       });
@@ -76,7 +76,7 @@ export default function CameraView({ navigation }) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="black" />
-        <Text color="black">Loading Similar Garments...</Text>
+        <Text color="black">Detecting Garments...</Text>
       </View>
     );
   } else {

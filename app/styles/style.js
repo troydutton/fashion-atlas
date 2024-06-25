@@ -1,8 +1,8 @@
 // styles/YourStyles.js
-import { Image, Button, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions, Dimensions} from 'react-native';
+import { StyleSheet, Dimensions} from 'react-native';
 
 const windowWidth = Dimensions.get('window').width;
-const windowHeight = Dimensions.get('window').height;;
+const windowHeight = Dimensions.get('window').height;
 const cameraHeight = Math.round((windowWidth * 16) / 9);
 
 // Define your styles here
@@ -54,13 +54,17 @@ export const styles = StyleSheet.create({
     height: cameraHeight,
     marginTop: 45
   },
+  fullscreenImage: {
+    width: windowWidth,
+    height: windowWidth * (16/9),
+  },
   image: {
-    width: '100%',
-    height: '100%',
+    width: windowWidth * 0.8,
+    height: windowWidth * 0.8 * (4/3),
   },
   imageContainer: {
     width: windowWidth * 0.8,
-    height: windowHeight * 0.6,
+    height: windowWidth * 0.8 * (4/3),
     borderRadius: 15,
     overflow: 'hidden',
     margin: 10,
