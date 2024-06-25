@@ -31,6 +31,9 @@ CLASS_NAMES = [
     "Sling Dress",
 ]
 
+DETECTOR_PATH = "models/finetuned-yolov8m.pt"
+ENCODER_PATH = "models/convnext-s.pt"
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 args = parse_config("config/DressCode.yaml")
@@ -38,11 +41,11 @@ args = parse_config("config/DressCode.yaml")
 # Load the models
 encoder, expander = build_encoder(**args["model"], device=device)
 
-encoder.load_state_dict(torch.load("models/ConvNeXt-T Semi-Hard 2024-05-31-01-55-38/checkpoint-20.pt", map_location=device))
+encoder.load_state_dict(torch.load(ENCODER_PATH, map_location=device))
 
 encoder.eval()
 
-yolo = YOLO("models/yolov8m.pt")
+yolo = YOLO(DETECTOR_PATH)
 
 _, transformations = get_transforms()
 

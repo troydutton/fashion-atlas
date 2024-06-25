@@ -16,6 +16,8 @@ DRESSCODE_ROOT = "data/DressCode/"
 # Map labels to their corresponding directories
 DIRECTORY_MAP = ["upper_body", "lower_body", "dresses"]
 
+MODEL_PATH = "models/convnext-s.pt"
+
 def precompute_dataset_features(
         encoder: nn.Module, 
         data: pd.DataFrame, 
@@ -72,7 +74,14 @@ if __name__ == "__main__":
     # Load in the encoder network
     encoder, _ = build_encoder(embedding_dim=1024, expander_dim=4096, device=device)
 
-    encoder.load_state_dict(torch.load("models\ConvNeXt-T Semi-Hard 2024-05-31-01-55-38\checkpoint-20.pt"))
+    if os.path.exists(MODEL_PATH):
+        checkpoint_path = MODEL_PATH
+    else:
+        checkpoint_path = select_model()
+
+    print(f"Loading {checkpoint_path}...")
+
+    encoder.load_state_dict(torch.load(checkpoint_path))
 
     _, transformations = get_transforms()
 
