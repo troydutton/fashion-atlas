@@ -10,8 +10,8 @@ if __name__ == "__main__":
     # Train the model
     model.train(
         data="config/DeepFashion2.yaml",
-        epochs=50,
-        batch=32,
+        epochs=10,
+        batch=16,
         device=device,
         seed=42
     )

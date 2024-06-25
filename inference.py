@@ -31,8 +31,6 @@ CLASS_NAMES = [
     "Sling Dress",
 ]
 
-MODEL_PATH = "models/ConvNeXt-S 2024-06-19-02-38-04/checkpoint-20.pt"
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 args = parse_config("config/DressCode.yaml")
@@ -40,7 +38,7 @@ args = parse_config("config/DressCode.yaml")
 # Load the models
 encoder, expander = build_encoder(**args["model"], device=device)
 
-encoder.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+encoder.load_state_dict(torch.load("models/ConvNeXt-T Semi-Hard 2024-05-31-01-55-38/checkpoint-20.pt", map_location=device))
 
 encoder.eval()
 
