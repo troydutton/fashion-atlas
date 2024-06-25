@@ -1,6 +1,6 @@
-path: C:\Users\troyd\Programs\ECE379K\fashion-atlas\data\DeepFashion2Yolo
-train: C:\Users\troyd\Programs\ECE379K\fashion-atlas\data\DeepFashion2Yolo\images\train
-val: C:\Users\troyd\Programs\ECE379K\fashion-atlas\data\DeepFashion2Yolo\images\val
+path: /home/tdutton/Programs/ECE379K/fashion-atlas/data/DeepFashion2Yolo
+train: images/train
+val: images/val
 
 names:
   0: Short Sleeve Top
