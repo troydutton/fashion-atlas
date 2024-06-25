@@ -4,19 +4,18 @@ model:
   dropout: 0.6
 
 train:
-  epochs: 20
+  epochs: 10
   batch_size: 32
-  run_name: 'ConvNeXt-S'
+  run_name: 'ConvNeXt-S Decaying Semi-Hard Transforms'
 
 optimizer:
   lr: 0.0001
   weight_decay: 0.1
 
 scheduler:
+  warmup_steps: 0
+  period: 20
   max_lr: 0.0001
-  pct_start: 0.1
-  div_factor: 10
-  final_div_factor: 10
 
 loss:
   margin: 1.5

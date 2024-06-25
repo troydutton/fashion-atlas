@@ -27,7 +27,7 @@ def pairwise_cosine_distance(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """
     return 1 - pairwise_cosine_similarity(x, y)
 
-def build_encoder(embedding_dim: int = 1024, expander_dim: int = 4096, dropout: float = 0.4, device: torch.device = torch.device("cpu")) -> Tuple[nn.Module, nn.Module]:
+def build_encoder(embedding_dim: int, expander_dim: int, dropout: float, device: torch.device) -> Tuple[nn.Module, nn.Module]:
     """
     Build the encoder and expander networks.
     """
@@ -72,8 +72,8 @@ def get_transforms() -> tuple[transforms.Compose, transforms.Compose]:
                 transforms.RandomRotation(degrees=35, fill=DRESSCODE_BACKGROUND)])]),
             transforms.RandomApply([transforms.RandomChoice([
                 transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 1.0)),
-                # transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-                # transforms.RandomGrayscale(p=1.0),
+                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+                transforms.RandomGrayscale(p=1.0),
                 transforms.RandomErasing(p=1.0, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=DRESSCODE_BACKGROUND)])]),
             transforms.Normalize(IMNET_MEAN, IMNET_STD),
         ]

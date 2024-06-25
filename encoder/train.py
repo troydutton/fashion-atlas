@@ -10,14 +10,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision.transforms.v2 as transforms
+import wandb
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
 from utils import build_encoder, cosine_distance, get_transforms, pairwise_cosine_distance, parse_config, set_random_seed
 from wandb.wandb_run import Run
-
-import wandb
 
 DRESSCODE_ROOT = "data/DressCode/"
 
@@ -251,6 +250,35 @@ class BatchAllTripletMarginLoss(nn.Module):
 
         return loss
     
+class CosineAnnealingWarmup:
+    def __init__(self, optimizer: optim.Optimizer, warmup_steps: int, period: int, min_lr: float = 1e-6, max_lr: float = 1e-3) -> None:
+        self.optimizer = optimizer
+        self.warmup_steps = warmup_steps
+        self.max_steps = period
+        self.min_lr = min_lr
+        self.max_lr = max_lr 
+
+        self.current_step = 0
+
+        lr = self.get_lr()
+
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+    
+    def step(self) -> None:
+        lr = self.get_lr()
+
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+        
+        self.current_step += 1
+
+    def get_lr(self) -> float:
+        if self.current_step < self.warmup_steps:
+            return self.min_lr + (self.max_lr - self.min_lr) * self.current_step / (self.warmup_steps - 1)
+        else:
+            return self.min_lr + 0.5 * (self.max_lr - self.min_lr) * (1 + math.cos(math.pi * (self.current_step - self.warmup_steps) / (self.max_steps)))
+
 def train(
     encoder: nn.Module,
     optimizer: optim.Optimizer,
@@ -260,10 +288,10 @@ def train(
     loss_fcn: nn.Module,
     logger: Run,
     epochs: int = 10,
-    batch_size: int = 32,
+    batch_size: int = 42,
     device: str = "cpu",
     output_dir: str = "./models",
-    run_name: str = "ConvNeXt-S",
+    run_name: str = "ConvNeXt-T",
 ):
     """
     Train the encoder network for a set number of epochs.
@@ -273,7 +301,7 @@ def train(
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, run_name), exist_ok=True)
 
-    train_subset = Subset(train_data, random.sample(range(len(train_data)), len(test_data)))
+    train_subset = Subset(train_data, random.sample(range(len(train_data)), 5000))
 
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=2)
 
@@ -286,7 +314,6 @@ def train(
         train_one_epoch(
             encoder=encoder,
             optimizer=optimizer,
-            scheduler=scheduler,
             loss_fcn=loss_fcn,
             dataloader=train_loader,
             logger=logger,
@@ -310,10 +337,12 @@ def train(
             device=device,
         )
 
-        metrics_str = " ".join(f"{k}: {test_metrics[k]:.3f}({train_metrics[k]:.3f})" for k in train_metrics.keys())
+        metrics_str = " ".join(f"{k}: {test_metrics[k]:.2f}({train_metrics[k]:.2f})" for k in train_metrics.keys())
         print(f"Epoch {epoch + 1}: {metrics_str}")
 
         logger.log({"Val": test_metrics, "Train": train_metrics}, step=logger.step)
+
+        scheduler.step()
 
         torch.save(encoder.state_dict(), f"{os.path.join(output_dir, run_name)}/checkpoint-{epoch + 1}.pt")
 
@@ -322,8 +351,7 @@ def train(
 def train_one_epoch(
     encoder: nn.Module,
     optimizer: optim.Optimizer,
-    scheduler: optim.lr_scheduler._LRScheduler,
-    loss_fcn: EncoderLoss,
+    loss_fcn: nn.Module,
     dataloader: DataLoader,
     logger: Run,
     epoch: int,
@@ -363,7 +391,8 @@ def train_one_epoch(
         cosine_distance_an += cosine_distance(anchor_features, negative_features).mean()
         hard_cosine_distance_an += pairwise_cosine_distance(anchor_features, negative_features).min(dim=1).values.mean()
 
-        # TODO: Find a better way to access the temperature
+        # TODO: Find a better way to log & step the temperature
+        # Log loss to tensorboard
         logger.log(
             {"Train": {**batch_losses, "Learning Rate": optimizer.param_groups[-1]["lr"], "Temperature": loss_fcn.triplet_loss.temperature}},
             step=epoch * len(dataloader) * dataloader.batch_size + i * dataloader.batch_size,
@@ -375,7 +404,6 @@ def train_one_epoch(
         
         batch_loss.backward()
         optimizer.step()
-        scheduler.step()
 
     logger.log(
         {"Train": {
@@ -467,13 +495,13 @@ if __name__ == "__main__":
 
     test_data = DressCodeDataset(root=DRESSCODE_ROOT, pairs="test_pairs_paired_cropped.txt", transformations=test_transformations)
     
-    # Create the model
+    # Instantiate the model
     encoder, expander = build_encoder(**args["model"], device=device)
     
     # Create the optimizer, scheduler and loss function
     optimizer = optim.AdamW(list(encoder.parameters()) + list(expander.parameters()))
 
-    scheduler = optim.lr_scheduler.OneCycleLR(optimizer, **args["scheduler"], epochs=args["train"]["epochs"], steps_per_epoch=math.ceil(len(train_data) / args["train"]["batch_size"]))
+    scheduler = CosineAnnealingWarmup(optimizer, **args["scheduler"])
 
     loss_fcn = EncoderLoss(expander, **args["loss"])
 
